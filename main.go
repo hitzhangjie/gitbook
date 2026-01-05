@@ -270,24 +270,10 @@ func init() {
 		Use:   "help",
 		Short: "List commands for GitBook",
 		Run: func(cmd *cobra.Command, args []string) {
-			gitbookPath, err := manager.EnsureAndLoad(bookRoot, gitbookVersion)
-			if err != nil {
+			kwargs := make(map[string]interface{})
+			if err := commands.ExecGitbookCommand("", "help", bookRoot, []string{}, kwargs); err != nil {
 				printError(err)
 				os.Exit(1)
-			}
-
-			// Load gitbook commands - this is a simplified version
-			// In the original, it loads commands from the gitbook module
-			// For now, we'll just show a message that they should use gitbook help from the installed version
-			fmt.Println("GitBook commands are loaded from the installed GitBook version.")
-			fmt.Println("To see available commands, GitBook will be executed with 'help'.")
-			fmt.Println()
-
-			// Try to execute gitbook help
-			kwargs := make(map[string]interface{})
-			if err := commands.ExecGitbookCommand(gitbookPath, "help", bookRoot, []string{}, kwargs); err != nil {
-				fmt.Printf("Note: Could not load GitBook commands: %v\n", err)
-				fmt.Println("Make sure GitBook is properly installed using 'gitbook fetch'")
 			}
 		},
 	})
@@ -512,27 +498,8 @@ func handleGitbookCommandFromCobra(commandName string, args []string, cmd *cobra
 		}
 	}
 
-	// Handle --gitbook or -v flag from persistent flags
-	if gitbookVersion != "" {
-		kwargs["gitbook"] = gitbookVersion
-	} else if v, ok := kwargs["gitbook"].(string); ok {
-		gitbookVersion = v
-	} else if v, ok := kwargs["v"].(string); ok {
-		gitbookVersion = v
-	} else if v, ok := kwargs["v"].(bool); ok && v {
-		// -v without value, use empty string (will use book.json or latest)
-		gitbookVersion = ""
-	}
-
-	// Ensure and load gitbook
-	gitbookPath, err := manager.EnsureAndLoad(bookRoot, gitbookVersion)
-	if err != nil {
-		printError(err)
-		os.Exit(1)
-	}
-
-	// Execute the command
-	if err := commands.ExecGitbookCommand(gitbookPath, commandName, bookRoot, filteredArgs, kwargs); err != nil {
+	// Execute the command (no longer need to load gitbook version)
+	if err := commands.ExecGitbookCommand("", commandName, bookRoot, filteredArgs, kwargs); err != nil {
 		printError(err)
 		os.Exit(1)
 	}
@@ -610,25 +577,8 @@ func handleGitbookCommand(commandName string, args []string) {
 		}
 	}
 
-	// Handle --gitbook or -v flag
-	if v, ok := kwargs["gitbook"].(string); ok {
-		gitbookVersion = v
-	} else if v, ok := kwargs["v"].(string); ok {
-		gitbookVersion = v
-	} else if v, ok := kwargs["v"].(bool); ok && v {
-		// -v without value, use empty string (will use book.json or latest)
-		gitbookVersion = ""
-	}
-
-	// Ensure and load gitbook
-	gitbookPath, err := manager.EnsureAndLoad(bookRoot, gitbookVersion)
-	if err != nil {
-		printError(err)
-		os.Exit(1)
-	}
-
-	// Execute the command
-	if err := commands.ExecGitbookCommand(gitbookPath, commandName, bookRoot, filteredArgs, kwargs); err != nil {
+	// Execute the command (no longer need to load gitbook version)
+	if err := commands.ExecGitbookCommand("", commandName, bookRoot, filteredArgs, kwargs); err != nil {
 		printError(err)
 		os.Exit(1)
 	}

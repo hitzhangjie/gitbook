@@ -3,9 +3,15 @@ package commands
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"github.com/hitzhangjie/gitbook/builder"
+	"github.com/hitzhangjie/gitbook/ebook"
+	"github.com/hitzhangjie/gitbook/initcmd"
+	"github.com/hitzhangjie/gitbook/plugin"
+	"github.com/hitzhangjie/gitbook/server"
 )
 
 type Command struct {
@@ -93,97 +99,8 @@ func Exec(commands []Command, commandName string, args []string, kwargs map[stri
 	return cmd.Exec(args, kwargs)
 }
 
-// ExecGitbookCommand executes a gitbook command by loading the gitbook module and calling it
+// ExecGitbookCommand executes a gitbook command using pure Go implementation
 func ExecGitbookCommand(gitbookPath, commandName, bookRoot string, args []string, kwargs map[string]interface{}) error {
-	gitbookDir := gitbookPath
-	if !filepath.IsAbs(gitbookDir) {
-		var err error
-		gitbookDir, err = filepath.Abs(gitbookDir)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Try to find gitbook CLI entry point
-	// GitBook typically has bin/gitbook.js or can be executed via npx
-	var gitbookBin string
-	var useNpx bool
-
-	// Check for bin/gitbook.js
-	gitbookBin = filepath.Join(gitbookDir, "bin", "gitbook.js")
-	if _, err := os.Stat(gitbookBin); err != nil {
-		// Try cli.js
-		gitbookBin = filepath.Join(gitbookDir, "cli.js")
-		if _, err := os.Stat(gitbookBin); err != nil {
-			// Try using npx with the gitbook package in the directory
-			useNpx = true
-			gitbookBin = "gitbook"
-		}
-	}
-
-	// Build command arguments
-	// The gitbook CLI expects: <command> [bookRoot] [args...] [flags...]
-	cmdArgs := []string{}
-	if !useNpx {
-		cmdArgs = append(cmdArgs, gitbookBin)
-	}
-	cmdArgs = append(cmdArgs, commandName)
-
-	// Add book root if provided and not already in args
-	hasBookRoot := false
-	for _, arg := range args {
-		// Check if any arg matches the book root (as absolute or relative path)
-		argAbs, _ := filepath.Abs(arg)
-		bookRootAbs, _ := filepath.Abs(bookRoot)
-		if arg == bookRoot || argAbs == bookRootAbs {
-			hasBookRoot = true
-			break
-		}
-	}
-	if !hasBookRoot && bookRoot != "" && bookRoot != "." {
-		absBookRoot, err := filepath.Abs(bookRoot)
-		if err == nil {
-			cmdArgs = append(cmdArgs, absBookRoot)
-		} else {
-			cmdArgs = append(cmdArgs, bookRoot)
-		}
-	}
-
-	// Add positional arguments
-	cmdArgs = append(cmdArgs, args...)
-
-	// Add kwargs as flags
-	for k, v := range kwargs {
-		if v == nil {
-			continue
-		}
-		// Skip gitbook version flag as it's handled by the CLI
-		if k == "gitbook" || k == "v" {
-			continue
-		}
-		switch val := v.(type) {
-		case bool:
-			if val {
-				cmdArgs = append(cmdArgs, "--"+k)
-			} else {
-				cmdArgs = append(cmdArgs, "--no-"+k)
-			}
-		case string:
-			if val != "" {
-				cmdArgs = append(cmdArgs, "--"+k+"="+val)
-			}
-		default:
-			cmdArgs = append(cmdArgs, "--"+k+"="+fmt.Sprintf("%v", val))
-		}
-	}
-
-	// Execute gitbook command
-	// Change to book root directory for execution
-	originalDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
 	absBookRoot, err := filepath.Abs(bookRoot)
 	if err != nil {
 		absBookRoot = bookRoot
@@ -191,41 +108,140 @@ func ExecGitbookCommand(gitbookPath, commandName, bookRoot string, args []string
 
 	// Ensure book root exists
 	if _, err := os.Stat(absBookRoot); err != nil {
-		// If book root doesn't exist, use current directory
-		absBookRoot = originalDir
+		absBookRoot, _ = os.Getwd()
 	}
 
-	if err := os.Chdir(absBookRoot); err != nil {
-		// If can't change to book root, continue with current directory
-		absBookRoot = originalDir
+	switch commandName {
+	case "init":
+		return handleInit(absBookRoot, args, kwargs)
+	case "build":
+		return handleBuild(absBookRoot, args, kwargs)
+	case "serve":
+		return handleServe(absBookRoot, args, kwargs)
+	case "install":
+		return handleInstall(absBookRoot, args, kwargs)
+	case "pdf":
+		return handlePDF(absBookRoot, args, kwargs)
+	case "epub":
+		return handleEPUB(absBookRoot, args, kwargs)
+	case "mobi":
+		return handleMOBI(absBookRoot, args, kwargs)
+	case "help":
+		return handleHelp()
+	default:
+		return fmt.Errorf("unknown command: %s", commandName)
 	}
-	defer os.Chdir(originalDir)
+}
 
-	// Set NODE_PATH to include gitbook directory for module resolution
-	env := os.Environ()
-	nodePath := os.Getenv("NODE_PATH")
-	if nodePath != "" {
-		nodePath = gitbookDir + string(filepath.ListSeparator) + nodePath
-	} else {
-		nodePath = gitbookDir
+func handleInit(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	initDir := bookRoot
+	if len(args) > 0 {
+		initDir = args[0]
 	}
-	env = append(env, "NODE_PATH="+nodePath)
+	return initcmd.Init(initDir)
+}
 
-	var cmd *exec.Cmd
-	if useNpx {
-		// Use npx to run gitbook from the directory
-		cmd = exec.Command("npx", append([]string{"--prefix", gitbookDir, "gitbook"}, cmdArgs...)...)
-	} else {
-		cmd = exec.Command("node", cmdArgs...)
+func handleBuild(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	outputDir := ""
+	if len(args) > 0 {
+		outputDir = args[0]
+	}
+	if outputDir == "" {
+		if output, ok := kwargs["output"].(string); ok {
+			outputDir = output
+		}
 	}
 
-	cmd.Dir = absBookRoot
-	cmd.Env = env
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
+	builder, err := builder.NewBuilder(bookRoot, outputDir)
+	if err != nil {
+		return err
+	}
 
-	return cmd.Run()
+	return builder.Build()
+}
+
+func handleServe(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	port := 4000
+	host := "localhost"
+
+	if p, ok := kwargs["port"].(string); ok {
+		if parsed, err := strconv.Atoi(p); err == nil {
+			port = parsed
+		}
+	}
+	if h, ok := kwargs["host"].(string); ok {
+		host = h
+	}
+
+	srv, err := server.NewServer(bookRoot, port, host)
+	if err != nil {
+		return err
+	}
+
+	return srv.Start()
+}
+
+func handleInstall(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	return plugin.Install(bookRoot)
+}
+
+func handlePDF(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	outputPath := "book.pdf"
+	if len(args) > 0 {
+		outputPath = args[0]
+	}
+
+	outputDir := filepath.Join(bookRoot, "_book")
+	gen, err := ebook.NewGenerator(bookRoot, outputDir, "pdf")
+	if err != nil {
+		return err
+	}
+
+	return gen.Generate(outputPath)
+}
+
+func handleEPUB(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	outputPath := "book.epub"
+	if len(args) > 0 {
+		outputPath = args[0]
+	}
+
+	outputDir := filepath.Join(bookRoot, "_book")
+	gen, err := ebook.NewGenerator(bookRoot, outputDir, "epub")
+	if err != nil {
+		return err
+	}
+
+	return gen.Generate(outputPath)
+}
+
+func handleMOBI(bookRoot string, args []string, kwargs map[string]interface{}) error {
+	outputPath := "book.mobi"
+	if len(args) > 0 {
+		outputPath = args[0]
+	}
+
+	outputDir := filepath.Join(bookRoot, "_book")
+	gen, err := ebook.NewGenerator(bookRoot, outputDir, "mobi")
+	if err != nil {
+		return err
+	}
+
+	return gen.Generate(outputPath)
+}
+
+func handleHelp() error {
+	fmt.Println("GitBook Commands:")
+	fmt.Println()
+	fmt.Println("  init          Initialize a GitBook project")
+	fmt.Println("  build         Build a static website")
+	fmt.Println("  serve         Start a local server to preview your book")
+	fmt.Println("  install       Install plugins for a book")
+	fmt.Println("  pdf           Generate a PDF file from your book")
+	fmt.Println("  epub          Generate an EPUB file from your book")
+	fmt.Println("  mobi          Generate a MOBI file from your book")
+	fmt.Println()
+	return nil
 }
 
 func indentOutput(n int, name, description string) {
