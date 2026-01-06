@@ -78,6 +78,7 @@ func (b *Builder) copyAssets() error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -223,4 +224,3 @@ func copyDir(src, dst string) error {
 		return os.WriteFile(dstPath, data, info.Mode())
 	})
 }
-

@@ -1,4 +1,4 @@
-package initcmd
+package commands
 
 import (
 	"fmt"
@@ -6,10 +6,32 @@ import (
 	"path/filepath"
 
 	"github.com/hitzhangjie/gitbook/book"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-// Init initializes a new GitBook project
-func Init(bookRoot string) error {
+// NewInitCommand creates the init command
+func NewInitCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "init [book]",
+		Short: "Setup and initialize a book",
+		Long:  "Initialize a book structure in the current directory or specified directory",
+		Run: func(cmd *cobra.Command, args []string) {
+			runCommand("init", cmd.Flags(), args)
+		},
+	}
+}
+
+func handleInit(bookRoot string, fset *pflag.FlagSet, args []string) error {
+	initDir := bookRoot
+	if len(args) > 0 {
+		initDir = args[0]
+	}
+	return doInit(initDir)
+}
+
+// doInit initializes a new GitBook project
+func doInit(bookRoot string) error {
 	absRoot, err := filepath.Abs(bookRoot)
 	if err != nil {
 		return err
@@ -30,8 +52,8 @@ func Init(bookRoot string) error {
 
 	// Create default book.json
 	config := &book.Config{
-		Title:  "My Book",
-		Author: "",
+		Title:   "My Book",
+		Author:  "",
 		Plugins: []string{},
 	}
 
@@ -64,4 +86,3 @@ This is the introduction to your book.`
 	fmt.Printf("GitBook initialized in %s\n", absRoot)
 	return nil
 }
-

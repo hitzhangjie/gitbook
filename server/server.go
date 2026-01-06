@@ -14,25 +14,21 @@ import (
 
 // Server represents a GitBook development server
 type Server struct {
-	Book      *book.Book
-	Port      int
-	Host      string
-	OutputDir string
+	Book       *book.Book
+	Port       int
+	Host       string
+	OutputDir  string
 	httpServer *http.Server
 }
 
 // NewServer creates a new development server
-func NewServer(bookRoot string, port int, host string) (*Server, error) {
+func NewServer(bookRoot string) (*Server, error) {
+	port := 4000
+	host := "localhost"
+
 	b, err := book.LoadBook(bookRoot)
 	if err != nil {
 		return nil, err
-	}
-
-	if port == 0 {
-		port = 4000
-	}
-	if host == "" {
-		host = "localhost"
 	}
 
 	outputDir := filepath.Join(bookRoot, "_book")
@@ -59,7 +55,7 @@ func (s *Server) Start() error {
 
 	// Setup HTTP server
 	mux := http.NewServeMux()
-	
+
 	// Serve static files
 	mux.HandleFunc("/", s.handleRequest)
 
@@ -95,31 +91,31 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	path = strings.TrimPrefix(path, "/")
 
 	// Check if file exists
-	filePath := filepath.Join(s.OutputDir, path)
-	
+	fp := filepath.Join(s.OutputDir, path)
+
 	// Security check: ensure path is within output directory
 	absOutput, _ := filepath.Abs(s.OutputDir)
-	absFile, _ := filepath.Abs(filePath)
+	absFile, _ := filepath.Abs(fp)
 	if !strings.HasPrefix(absFile, absOutput) {
 		http.NotFound(w, r)
 		return
 	}
 
 	// Check if it's a directory, serve index.html
-	info, err := os.Stat(filePath)
+	info, err := os.Stat(fp)
 	if err == nil && info.IsDir() {
-		filePath = filepath.Join(filePath, "index.html")
+		fp = filepath.Join(fp, "index.html")
 	}
 
 	// Serve file
-	if _, err := os.Stat(filePath); err == nil {
-		http.ServeFile(w, r, filePath)
+	if _, err := os.Stat(fp); err == nil {
+		http.ServeFile(w, r, fp)
 		return
 	}
 
 	// Try .html extension
-	if !strings.HasSuffix(filePath, ".html") {
-		htmlPath := filePath + ".html"
+	if !strings.HasSuffix(fp, ".html") {
+		htmlPath := fp + ".html"
 		if _, err := os.Stat(htmlPath); err == nil {
 			http.ServeFile(w, r, htmlPath)
 			return
@@ -128,4 +124,3 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	http.NotFound(w, r)
 }
-
