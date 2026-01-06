@@ -164,6 +164,16 @@ body {
     font-size: 12px;
 }
 
+.toc-link[data-level="5"] {
+    padding-left: 64px;
+    font-size: 11px;
+}
+
+.toc-link[data-level="6"] {
+    padding-left: 80px;
+    font-size: 11px;
+}
+
 .toc-list .toc-list {
     margin-top: 4px;
 }
