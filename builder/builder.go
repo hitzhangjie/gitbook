@@ -79,6 +79,26 @@ func (b *Builder) copyAssets() error {
 		}
 	}
 
+	// Also copy .jpg, .jpeg, .png files in Book.Root to OutputDir (for book covers)
+	imagePatterns := []string{"*.jpg", "*.jpeg", "*.png"}
+	for _, pattern := range imagePatterns {
+		matches, err := filepath.Glob(filepath.Join(b.Book.Root, pattern))
+		if err != nil {
+			continue
+		}
+		for _, src := range matches {
+			base := filepath.Base(src)
+			dst := filepath.Join(b.OutputDir, base)
+			data, err := os.ReadFile(src)
+			if err != nil {
+				continue
+			}
+			if err := os.WriteFile(dst, data, 0644); err != nil {
+				continue
+			}
+		}
+	}
+
 	return nil
 }
 
