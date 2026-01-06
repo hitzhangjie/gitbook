@@ -258,11 +258,21 @@
             const parser = new DOMParser();
             const newDoc = parser.parseFromString(newHTML, 'text/html');
 
-            // Extract elements to update from the parsed document
-            const newTitle = newDoc.querySelector('.article-title');
-            const newContent = newDoc.querySelector('.article-content');
-            const newTOC = newDoc.querySelector('#toc');
-            const newNavTree = newDoc.querySelector('.nav-tree');
+            // Extract elements to update from the parsed document body
+            // Query from body to ensure we get the correct elements
+            const body = newDoc.body || newDoc.documentElement;
+            const newTitle = body.querySelector('.article-title');
+            const newContent = body.querySelector('.article-content');
+            const newTOC = body.querySelector('#toc');
+            const newNavTree = body.querySelector('.nav-tree');
+            
+            console.log('Parsed elements:', {
+                hasBody: !!newDoc.body,
+                hasTitle: !!newTitle,
+                hasContent: !!newContent,
+                hasTOC: !!newTOC,
+                hasNavTree: !!newNavTree
+            });
 
             // Debug: log if elements are found
             if (!newContent) {
@@ -283,6 +293,15 @@
                 // Store reference to avoid closure issues
                 const contentHTML = newContent.innerHTML;
                 
+                // Debug: check if contentHTML has content
+                if (!contentHTML || contentHTML.trim().length === 0) {
+                    console.warn('New content is empty, falling back to full reload');
+                    window.location.reload();
+                    return;
+                }
+                
+                console.log('Updating content, length:', contentHTML.length);
+                
                 // Fade out
                 oldContent.style.transition = 'opacity 0.2s';
                 oldContent.style.opacity = '0';
@@ -296,21 +315,29 @@
                         return;
                     }
 
+                    console.log('Replacing content, old length:', currentContent.innerHTML.length, 'new length:', contentHTML.length);
+                    
                     // Replace content
                     currentContent.innerHTML = contentHTML;
+                    
+                    // Verify content was updated
+                    if (currentContent.innerHTML.length === 0) {
+                        console.error('Content update failed: content is empty after update');
+                        window.location.reload();
+                        return;
+                    }
                     
                     // Force reflow to ensure transition works
                     currentContent.offsetHeight;
                     
                     // Fade in
                     currentContent.style.opacity = '1';
+                    console.log('Content updated successfully');
 
                     // Update TOC after content is updated
                     const oldTOC = document.getElementById('toc');
                     if (oldTOC && newTOC) {
                         oldTOC.innerHTML = newTOC.innerHTML;
-                        // Reinitialize TOC scroll spy
-                        initTOCScrollSpy();
                     }
 
                     // Update navigation if needed (only if structure changed)
@@ -321,6 +348,73 @@
                             oldNavTree.innerHTML = newNavTree.innerHTML;
                         }
                     }
+
+                    // Restore scroll position after content is fully updated and rendered
+                    // Use multiple requestAnimationFrame and setTimeout to ensure DOM is fully rendered
+                    const restoreScroll = () => {
+                        const updatedContentArea = document.getElementById('main-content');
+                        if (!updatedContentArea) {
+                            console.warn('Content area not found for scroll restoration');
+                            isReloading = false;
+                            hideIndicator();
+                            return;
+                        }
+
+                        // Calculate max scroll position
+                        const maxScroll = updatedContentArea.scrollHeight - updatedContentArea.clientHeight;
+                        // Restore scroll position, but don't exceed max scroll
+                        const targetScroll = Math.min(scrollTop, maxScroll);
+                        
+                        // Use scrollTo for better compatibility
+                        updatedContentArea.scrollTo({
+                            top: targetScroll,
+                            behavior: 'auto' // Use 'auto' instead of 'smooth' for instant scroll
+                        });
+                        
+                        // Also set scrollTop directly as fallback
+                        updatedContentArea.scrollTop = targetScroll;
+                        
+                        // Verify scroll position was set and ensure it sticks
+                        setTimeout(() => {
+                            const actualScroll = updatedContentArea.scrollTop;
+                            if (Math.abs(actualScroll - targetScroll) > 1) {
+                                console.warn('Scroll position mismatch, retrying...', {
+                                    target: targetScroll,
+                                    actual: actualScroll,
+                                    scrollHeight: updatedContentArea.scrollHeight,
+                                    clientHeight: updatedContentArea.clientHeight
+                                });
+                                // Retry once more
+                                updatedContentArea.scrollTop = targetScroll;
+                                updatedContentArea.scrollTo({ top: targetScroll, behavior: 'auto' });
+                            } else {
+                                console.log('Scroll position restored successfully:', actualScroll);
+                            }
+                            
+                            // Force scroll position one more time to ensure it's set
+                            updatedContentArea.scrollTop = targetScroll;
+                            
+                            // Reinitialize TOC scroll spy AFTER scroll position is restored
+                            // Pass the target scroll position to ensure it's preserved
+                            if (oldTOC && newTOC) {
+                                // Delay initTOCScrollSpy to ensure scroll position is fully applied
+                                setTimeout(() => {
+                                    initTOCScrollSpy(targetScroll);
+                                }, 10);
+                            } else {
+                                isReloading = false;
+                                hideIndicator();
+                            }
+                        }, 50);
+                    };
+
+                    // Use requestAnimationFrame to ensure DOM is rendered, then add a small delay
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            // Add a small delay to ensure content is fully laid out
+                            setTimeout(restoreScroll, 50);
+                        });
+                    });
                 }, 200);
             } else {
                 console.warn('Content update failed:', { oldContent: !!oldContent, newContent: !!newContent });
@@ -328,13 +422,6 @@
                 window.location.reload();
                 return;
             }
-
-            // Restore scroll position
-            setTimeout(() => {
-                contentArea.scrollTop = scrollTop;
-                isReloading = false;
-                hideIndicator();
-            }, 300);
 
         } catch (error) {
             console.error('Failed to reload page:', error);
@@ -344,18 +431,70 @@
     }
 
     // Reinitialize TOC scroll spy after content update
-    function initTOCScrollSpy() {
+    // scrollPosition: optional scroll position to restore after replacing element
+    function initTOCScrollSpy(scrollPosition) {
         // Wait a bit for DOM to update
         setTimeout(() => {
             const tocLinks = document.querySelectorAll('.toc-link');
             const headings = document.querySelectorAll('.article-content h1, .article-content h2, .article-content h3, .article-content h4');
             const contentArea = document.getElementById('main-content');
 
-            if (tocLinks.length === 0 || headings.length === 0 || !contentArea) return;
+            if (tocLinks.length === 0 || headings.length === 0 || !contentArea) {
+                if (scrollPosition !== undefined) {
+                    isReloading = false;
+                    hideIndicator();
+                }
+                return;
+            }
+
+            // Use provided scroll position, or save current scroll position
+            const savedScrollTop = scrollPosition !== undefined ? scrollPosition : contentArea.scrollTop;
+            console.log('initTOCScrollSpy: saving scroll position', savedScrollTop);
 
             // Remove existing scroll listener by cloning the element (removes all listeners)
             const newContentArea = contentArea.cloneNode(true);
             contentArea.parentNode.replaceChild(newContentArea, contentArea);
+            
+            // Restore scroll position after replacing element
+            // Use both scrollTo and scrollTop for maximum compatibility
+            newContentArea.scrollTo({ top: savedScrollTop, behavior: 'auto' });
+            newContentArea.scrollTop = savedScrollTop;
+            
+            // Force a reflow to ensure scroll position is applied
+            newContentArea.offsetHeight;
+            
+            // Verify scroll position was restored with multiple attempts
+            const verifyScroll = () => {
+                const actualScroll = newContentArea.scrollTop;
+                if (Math.abs(actualScroll - savedScrollTop) > 1) {
+                    console.warn('initTOCScrollSpy: scroll position mismatch, retrying...', {
+                        target: savedScrollTop,
+                        actual: actualScroll,
+                        scrollHeight: newContentArea.scrollHeight,
+                        clientHeight: newContentArea.clientHeight
+                    });
+                    // Retry with both methods
+                    newContentArea.scrollTop = savedScrollTop;
+                    newContentArea.scrollTo({ top: savedScrollTop, behavior: 'auto' });
+                    // Force reflow again
+                    newContentArea.offsetHeight;
+                } else {
+                    console.log('initTOCScrollSpy: scroll position restored successfully:', actualScroll);
+                }
+            };
+            
+            // Verify immediately and after a delay
+            verifyScroll();
+            requestAnimationFrame(() => {
+                verifyScroll();
+                // Mark reloading as complete if we were restoring scroll position
+                if (scrollPosition !== undefined) {
+                    setTimeout(() => {
+                        isReloading = false;
+                        hideIndicator();
+                    }, 10);
+                }
+            });
 
             // Re-query elements after DOM update
             const newTocLinks = document.querySelectorAll('.toc-link');
