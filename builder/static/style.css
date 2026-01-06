@@ -73,7 +73,7 @@ body {
 
 /* Navigation Tree */
 .nav-tree {
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .nav-list {
@@ -107,32 +107,34 @@ body {
 
 .nav-link[data-level="1"] {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 16px;
 }
 
 .nav-link[data-level="2"] {
+    font-weight: 500;
     padding-left: 16px;
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .nav-link[data-level="3"] {
+    font-weight: 400;
     padding-left: 32px;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .nav-link[data-level="4"] {
     padding-left: 48px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .nav-link[data-level="5"] {
     padding-left: 64px;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .nav-link[data-level="6"] {
     padding-left: 80px;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .nav-title {
@@ -170,7 +172,7 @@ body {
 
 /* TOC Styles */
 .toc {
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .toc-list {
@@ -198,32 +200,35 @@ body {
 
 .toc-link[data-level="1"] {
     font-weight: 600;
-    font-size: 15px;
+    font-size: 16px;
 }
 
 .toc-link[data-level="2"] {
+    font-weight: 600;
     padding-left: 16px;
-    font-size: 14px;
+    font-size: 15px;
 }
 
 .toc-link[data-level="3"] {
+    font-weight: 500;
     padding-left: 32px;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .toc-link[data-level="4"] {
+    font-weight: 400;
     padding-left: 48px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .toc-link[data-level="5"] {
     padding-left: 64px;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .toc-link[data-level="6"] {
     padding-left: 80px;
-    font-size: 11px;
+    font-size: 14px;
 }
 
 .toc-list .toc-list {
