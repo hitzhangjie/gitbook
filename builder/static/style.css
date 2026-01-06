@@ -103,12 +103,62 @@ body {
     font-weight: 500;
 }
 
+.nav-link[data-level="1"] {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.nav-link[data-level="2"] {
+    padding-left: 16px;
+    font-size: 14px;
+}
+
+.nav-link[data-level="3"] {
+    padding-left: 32px;
+    font-size: 13px;
+}
+
+.nav-link[data-level="4"] {
+    padding-left: 48px;
+    font-size: 12px;
+}
+
+.nav-link[data-level="5"] {
+    padding-left: 64px;
+    font-size: 11px;
+}
+
+.nav-link[data-level="6"] {
+    padding-left: 80px;
+    font-size: 11px;
+}
+
 .nav-title {
     display: block;
     padding: 6px 12px;
     color: #24292e;
     font-weight: 600;
     margin-top: 8px;
+}
+
+.nav-title[data-level="2"] {
+    padding-left: 16px;
+}
+
+.nav-title[data-level="3"] {
+    padding-left: 32px;
+}
+
+.nav-title[data-level="4"] {
+    padding-left: 48px;
+}
+
+.nav-title[data-level="5"] {
+    padding-left: 64px;
+}
+
+.nav-title[data-level="6"] {
+    padding-left: 80px;
 }
 
 .nav-list .nav-list {

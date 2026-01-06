@@ -57,9 +57,9 @@
         {{range .}}
             <li class="nav-item">
                 {{if .Path}}
-                    <a href="{{.URL}}" class="nav-link {{if .Active}}active{{end}}">{{.Title}}</a>
+                    <a href="{{.URL}}" class="nav-link {{if .Active}}active{{end}}" data-level="{{.Level}}">{{.Title}}</a>
                 {{else}}
-                    <span class="nav-title">{{.Title}}</span>
+                    <span class="nav-title" data-level="{{.Level}}">{{.Title}}</span>
                 {{end}}
                 {{if .Children}}
                     {{template "nav-tree" .Children}}

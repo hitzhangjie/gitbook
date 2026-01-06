@@ -131,17 +131,23 @@ func ParseSummary(content string) (*Summary, error) {
 	}
 
 	lines := splitLines(content)
+	// Stack to track parent chapters at each level
+	// Each element is a pointer to a Chapters slice (either summary.Chapters or a chapter's Articles)
 	var stack []*[]Chapter
 	stack = append(stack, &summary.Chapters)
 
 	for _, line := range lines {
-		line = trimSpace(line)
-		if line == "" || !strings.HasPrefix(line, "*") {
+		// Get indent level BEFORE trimming spaces
+		level := getIndentLevel(line)
+
+		// Trim spaces for parsing
+		trimmedLine := trimSpace(line)
+		if trimmedLine == "" || !strings.HasPrefix(trimmedLine, "*") {
 			continue
 		}
 
 		// Parse markdown link: * [Title](path)
-		title, path := parseSummaryLine(line)
+		title, path := parseSummaryLine(trimmedLine)
 		if title == "" {
 			continue
 		}
@@ -152,27 +158,34 @@ func ParseSummary(content string) (*Summary, error) {
 			Articles: []Chapter{},
 		}
 
-		// Determine nesting level
-		level := getIndentLevel(line)
+		// Adjust stack to match current level
+		// If current level is deeper than stack, we need to expand stack
+		// If current level is shallower, we need to pop stack
 		for len(stack) > level+1 {
 			stack = stack[:len(stack)-1]
 		}
+
+		// Ensure stack has enough levels
 		for len(stack) <= level {
-			// Create new level
 			if len(stack) == 0 {
 				stack = append(stack, &summary.Chapters)
 			} else {
-				lastChapters := stack[len(stack)-1]
-				if len(*lastChapters) > 0 {
-					lastChapter := &(*lastChapters)[len(*lastChapters)-1]
+				// Get the last chapter at the current level
+				parentChapters := stack[len(stack)-1]
+				if len(*parentChapters) > 0 {
+					// Use the last chapter's Articles as the next level
+					lastChapter := &(*parentChapters)[len(*parentChapters)-1]
 					stack = append(stack, &lastChapter.Articles)
 				} else {
+					// If no chapters at this level, fall back to summary.Chapters
 					stack = append(stack, &summary.Chapters)
 				}
 			}
 		}
 
-		*stack[level] = append(*stack[level], chapter)
+		// Add chapter to the appropriate parent
+		parent := stack[level]
+		*parent = append(*parent, chapter)
 	}
 
 	return summary, nil
@@ -225,15 +238,20 @@ func parseSummaryLine(line string) (title, path string) {
 }
 
 func getIndentLevel(line string) int {
-	level := 0
+	// Count leading spaces and tabs before the '*' character
+	// GitBook typically uses 2 spaces per indent level
+	spaces := 0
 	for _, r := range line {
 		if r == ' ' {
-			level++
+			spaces++
 		} else if r == '\t' {
-			level += 4
+			// Treat tab as 2 spaces (typical GitBook convention)
+			spaces += 2
 		} else if r == '*' {
-			return level / 2 // Assuming 2 spaces per level
+			// Return the indent level (2 spaces = 1 level)
+			return spaces / 2
 		} else {
+			// If we encounter a non-whitespace, non-* character before '*', it's not a valid summary line
 			break
 		}
 	}

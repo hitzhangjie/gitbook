@@ -31,6 +31,7 @@ type NavItem struct {
 	Path     string
 	URL      string
 	Active   bool
+	Level    int
 	Children []NavItem
 }
 
@@ -377,11 +378,16 @@ func (b *Builder) renderTemplate(data PageData) (string, error) {
 }
 
 func (b *Builder) buildNavTree(chapters []book.Chapter, basePath string) []NavItem {
+	return b.buildNavTreeWithLevel(chapters, basePath, 1)
+}
+
+func (b *Builder) buildNavTreeWithLevel(chapters []book.Chapter, basePath string, level int) []NavItem {
 	var items []NavItem
 	for _, chapter := range chapters {
 		item := NavItem{
 			Title: chapter.Title,
 			Path:  chapter.Path,
+			Level: level,
 		}
 
 		if chapter.Path != "" {
@@ -401,7 +407,7 @@ func (b *Builder) buildNavTree(chapters []book.Chapter, basePath string) []NavIt
 					nextBasePath = ""
 				}
 			}
-			item.Children = b.buildNavTree(chapter.Articles, nextBasePath)
+			item.Children = b.buildNavTreeWithLevel(chapter.Articles, nextBasePath, level+1)
 		}
 
 		items = append(items, item)
