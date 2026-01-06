@@ -49,6 +49,188 @@
     initResizer('resizer-right', 'sidebar-right', false);
 })();
 
+// Navigation tree link handling (partial page load)
+(function() {
+    // Expose initNavTreeLinks globally so it can be called after live reload
+    window.initNavTreeLinks = function() {
+        const navLinks = document.querySelectorAll('.nav-link');
+        
+        navLinks.forEach((link) => {
+            // Remove existing listeners by cloning
+            const newLink = link.cloneNode(true);
+            link.parentNode.replaceChild(newLink, link);
+            
+            newLink.addEventListener('click', async function(e) {
+                const href = this.getAttribute('href');
+                if (!href || href.startsWith('#')) {
+                    return; // Allow hash links to work normally
+                }
+                
+                e.preventDefault();
+                
+                // Don't navigate if clicking the same page
+                const currentPath = window.location.pathname;
+                if (href === currentPath || href === currentPath + '/') {
+                    return;
+                }
+                
+                await loadPage(href);
+            });
+        });
+    };
+    
+    // Load page content without refreshing navtree
+    async function loadPage(url) {
+        try {
+            const contentArea = document.getElementById('main-content');
+            if (!contentArea) {
+                // Fallback to full page load
+                window.location.href = url;
+                return;
+            }
+            
+            // Save scroll position
+            const scrollTop = contentArea.scrollTop;
+            
+            // Show loading indicator
+            const indicator = document.getElementById('live-reload-indicator');
+            if (indicator) {
+                indicator.textContent = '加载中...';
+                indicator.style.display = 'block';
+                indicator.style.opacity = '1';
+            }
+            
+            // Fetch new page
+            const response = await fetch(url, {
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch page');
+            }
+            
+            const newHTML = await response.text();
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(newHTML, 'text/html');
+            const body = newDoc.body || newDoc.documentElement;
+            
+            // Extract elements
+            const newTitle = body.querySelector('.article-title');
+            const newContent = body.querySelector('.article-content');
+            const newTOC = body.querySelector('#toc');
+            
+            if (!newContent) {
+                // Fallback to full page load
+                window.location.href = url;
+                return;
+            }
+            
+            // Update title
+            const oldTitle = document.querySelector('.article-title');
+            if (oldTitle && newTitle) {
+                oldTitle.textContent = newTitle.textContent;
+            }
+            
+            // Update content with fade animation
+            const oldContent = document.querySelector('.article-content');
+            if (oldContent && newContent) {
+                const contentHTML = newContent.innerHTML;
+                
+                // Fade out
+                oldContent.style.transition = 'opacity 0.2s';
+                oldContent.style.opacity = '0';
+                
+                setTimeout(() => {
+                    const currentContent = document.querySelector('.article-content');
+                    if (!currentContent) {
+                        window.location.href = url;
+                        return;
+                    }
+                    
+                    // Replace content
+                    currentContent.innerHTML = contentHTML;
+                    
+                    // Force reflow
+                    currentContent.offsetHeight;
+                    
+                    // Fade in
+                    currentContent.style.opacity = '1';
+                    
+                    // Update TOC
+                    const oldTOC = document.getElementById('toc');
+                    if (oldTOC && newTOC) {
+                        oldTOC.innerHTML = newTOC.innerHTML;
+                    }
+                    
+                    // Update active state in navtree (without refreshing the whole tree)
+                    updateNavTreeActiveState(url);
+                    
+                    // Update URL and history
+                    window.history.pushState({ path: url }, '', url);
+                    
+                    // Update page title
+                    const pageTitle = newTitle ? newTitle.textContent : '';
+                    const bookTitle = document.querySelector('.sidebar-header h2')?.textContent || 'GitBook';
+                    document.title = pageTitle ? `${pageTitle} - ${bookTitle}` : bookTitle;
+                    
+                    // Reinitialize TOC scroll spy and navtree links
+                    setTimeout(() => {
+                        if (typeof window.initTOCScrollSpy === 'function') {
+                            window.initTOCScrollSpy();
+                        }
+                        // Reinitialize navtree links to ensure event handlers are attached
+                        if (typeof window.initNavTreeLinks === 'function') {
+                            window.initNavTreeLinks();
+                        }
+                        // Hide loading indicator
+                        const indicator = document.getElementById('live-reload-indicator');
+                        if (indicator) {
+                            indicator.style.opacity = '0';
+                            setTimeout(() => {
+                                indicator.style.display = 'none';
+                            }, 300);
+                        }
+                    }, 50);
+                }, 200);
+            }
+        } catch (error) {
+            console.error('Failed to load page:', error);
+            // Fallback to full page load
+            window.location.href = url;
+        }
+    }
+    
+    // Update active state in navtree without refreshing the whole tree
+    function updateNavTreeActiveState(currentUrl) {
+        const navLinks = document.querySelectorAll('.nav-link');
+        const currentPath = currentUrl.replace(window.location.origin, '');
+        
+        navLinks.forEach((link) => {
+            const href = link.getAttribute('href');
+            if (href === currentPath || href === currentPath + '/') {
+                link.classList.add('active');
+            } else {
+                link.classList.remove('active');
+            }
+        });
+    }
+    
+    // Handle browser back/forward buttons
+    window.addEventListener('popstate', function(e) {
+        if (e.state && e.state.path) {
+            loadPage(e.state.path);
+        } else {
+            loadPage(window.location.pathname);
+        }
+    });
+    
+    // Initialize on page load
+    window.initNavTreeLinks();
+})();
+
 // TOC scroll spy
 (function() {
     const tocLinks = document.querySelectorAll('.toc-link');
@@ -340,12 +522,45 @@
                         oldTOC.innerHTML = newTOC.innerHTML;
                     }
 
-                    // Update navigation if needed (only if structure changed)
+                    // Update navigation active state only (don't refresh the whole navtree)
+                    // Only update if structure actually changed (e.g., new chapters added)
                     const oldNavTree = document.querySelector('.nav-tree');
                     if (oldNavTree && newNavTree) {
-                        // Check if navigation structure changed
-                        if (oldNavTree.innerHTML !== newNavTree.innerHTML) {
+                        // Check if navigation structure changed by comparing link counts and URLs
+                        const oldLinks = oldNavTree.querySelectorAll('.nav-link');
+                        const newLinks = newNavTree.querySelectorAll('.nav-link');
+                        let structureChanged = oldLinks.length !== newLinks.length;
+                        
+                        if (!structureChanged) {
+                            // Check if URLs match
+                            oldLinks.forEach((oldLink, index) => {
+                                if (index < newLinks.length) {
+                                    if (oldLink.getAttribute('href') !== newLinks[index].getAttribute('href')) {
+                                        structureChanged = true;
+                                    }
+                                }
+                            });
+                        }
+                        
+                        if (structureChanged) {
+                            // Only update if structure changed (e.g., new chapters)
                             oldNavTree.innerHTML = newNavTree.innerHTML;
+                            // Reinitialize navtree link handlers
+                            if (typeof window.initNavTreeLinks === 'function') {
+                                window.initNavTreeLinks();
+                            }
+                        } else {
+                            // Just update active state
+                            const currentPath = window.location.pathname;
+                            const oldLinksAfter = oldNavTree.querySelectorAll('.nav-link');
+                            oldLinksAfter.forEach((link) => {
+                                const href = link.getAttribute('href');
+                                if (href === currentPath || href === currentPath + '/') {
+                                    link.classList.add('active');
+                                } else {
+                                    link.classList.remove('active');
+                                }
+                            });
                         }
                     }
 
@@ -432,7 +647,8 @@
 
     // Reinitialize TOC scroll spy after content update
     // scrollPosition: optional scroll position to restore after replacing element
-    function initTOCScrollSpy(scrollPosition) {
+    // Expose globally so it can be called from navtree link handler
+    window.initTOCScrollSpy = function(scrollPosition) {
         // Wait a bit for DOM to update
         setTimeout(() => {
             const tocLinks = document.querySelectorAll('.toc-link');
