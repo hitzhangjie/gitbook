@@ -264,10 +264,9 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string, nav
 		toc := b.extractTOCFromHTML(html)
 
 		// Generate HTML page path
+		// chapter.Path is already a relative path from book root (e.g., "4-basics/README.md")
+		// So we should use it directly without basePath
 		htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
-		if basePath != "" {
-			htmlPath = filepath.Join(basePath, htmlPath)
-		}
 		outputPath := filepath.Join(b.OutputDir, htmlPath)
 		relPath := htmlPath
 
@@ -304,8 +303,9 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string, nav
 		}
 
 		// Recursively generate sub-chapters
+		// basePath is no longer needed since chapter.Path is already a full relative path
 		if len(chapter.Articles) > 0 {
-			if err := b.generateChapters(chapter.Articles, filepath.Dir(htmlPath), navTree, relPath); err != nil {
+			if err := b.generateChapters(chapter.Articles, "", navTree, relPath); err != nil {
 				return err
 			}
 		}
@@ -391,23 +391,16 @@ func (b *Builder) buildNavTreeWithLevel(chapters []book.Chapter, basePath string
 		}
 
 		if chapter.Path != "" {
+			// chapter.Path is already a relative path from book root (e.g., "4-basics/README.md")
+			// So we should use it directly without basePath
 			htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
-			if basePath != "" {
-				htmlPath = filepath.Join(basePath, htmlPath)
-			}
 			// Convert to relative URL
 			item.URL = "/" + strings.ReplaceAll(htmlPath, "\\", "/")
 		}
 
 		if len(chapter.Articles) > 0 {
-			nextBasePath := basePath
-			if chapter.Path != "" {
-				nextBasePath = filepath.Dir(item.URL)
-				if nextBasePath == "." {
-					nextBasePath = ""
-				}
-			}
-			item.Children = b.buildNavTreeWithLevel(chapter.Articles, nextBasePath, level+1)
+			// basePath is no longer needed since chapter.Path is already a full relative path
+			item.Children = b.buildNavTreeWithLevel(chapter.Articles, "", level+1)
 		}
 
 		items = append(items, item)
