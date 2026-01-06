@@ -5,11 +5,41 @@
     let startX = 0;
     let startWidth = 0;
 
+    function updateResizerPosition(resizer, sidebar) {
+        const sidebarRect = sidebar.getBoundingClientRect();
+        const isLeft = sidebar.classList.contains('sidebar-left');
+        
+        if (isLeft) {
+            resizer.style.left = (sidebarRect.right - 2) + 'px';
+        } else {
+            resizer.style.left = (sidebarRect.left - 2) + 'px';
+        }
+        resizer.style.top = sidebarRect.top + 'px';
+        resizer.style.height = sidebarRect.height + 'px';
+    }
+
     function initResizer(resizerId, sidebarId, isLeft) {
         const resizer = document.getElementById(resizerId);
         const sidebar = document.getElementById(sidebarId);
         
         if (!resizer || !sidebar) return;
+
+        // Update position initially
+        updateResizerPosition(resizer, sidebar);
+
+        // Update position on scroll
+        sidebar.addEventListener('scroll', function() {
+            if (!isResizing) {
+                updateResizerPosition(resizer, sidebar);
+            }
+        });
+
+        // Update position on window resize
+        window.addEventListener('resize', function() {
+            if (!isResizing) {
+                updateResizerPosition(resizer, sidebar);
+            }
+        });
 
         resizer.addEventListener('mousedown', function(e) {
             isResizing = true;
@@ -25,18 +55,29 @@
     document.addEventListener('mousemove', function(e) {
         if (!isResizing || !currentResizer) return;
 
-        const sidebar = currentResizer.parentElement;
+        const sidebar = document.getElementById(
+            currentResizer.id === 'resizer-left' ? 'sidebar-left' : 'sidebar-right'
+        );
+        if (!sidebar) return;
+
         const isLeft = sidebar.classList.contains('sidebar-left');
         const deltaX = isLeft ? (e.clientX - startX) : (startX - e.clientX);
         const newWidth = Math.max(150, Math.min(500, startWidth + deltaX));
         
         sidebar.style.width = newWidth + 'px';
+        updateResizerPosition(currentResizer, sidebar);
     });
 
     document.addEventListener('mouseup', function() {
         if (isResizing) {
             isResizing = false;
             if (currentResizer) {
+                const sidebar = document.getElementById(
+                    currentResizer.id === 'resizer-left' ? 'sidebar-left' : 'sidebar-right'
+                );
+                if (sidebar) {
+                    updateResizerPosition(currentResizer, sidebar);
+                }
                 currentResizer.classList.remove('resizing');
             }
             currentResizer = null;
@@ -47,6 +88,23 @@
     // Initialize resizers
     initResizer('resizer-left', 'sidebar-left', true);
     initResizer('resizer-right', 'sidebar-right', false);
+
+    // Update positions periodically to handle any layout changes
+    // Use a longer interval to reduce unnecessary calculations
+    setInterval(function() {
+        if (!isResizing) {
+            const leftResizer = document.getElementById('resizer-left');
+            const leftSidebar = document.getElementById('sidebar-left');
+            if (leftResizer && leftSidebar) {
+                updateResizerPosition(leftResizer, leftSidebar);
+            }
+            const rightResizer = document.getElementById('resizer-right');
+            const rightSidebar = document.getElementById('sidebar-right');
+            if (rightResizer && rightSidebar) {
+                updateResizerPosition(rightResizer, rightSidebar);
+            }
+        }
+    }, 500);
 })();
 
 // Navigation tree link handling (partial page load)
