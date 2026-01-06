@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - {{.BookTitle}}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="layout">
+        <!-- Left Sidebar: Navigation -->
+        <aside class="sidebar sidebar-left" id="sidebar-left">
+            <div class="sidebar-content">
+                <div class="sidebar-header">
+                    <h2>{{.BookTitle}}</h2>
+                </div>
+                <nav class="nav-tree">
+                    {{template "nav-tree" .NavTree}}
+                </nav>
+            </div>
+            <div class="resizer resizer-left" id="resizer-left"></div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="content" id="main-content">
+            <article class="article">
+                <h1 class="article-title">{{.Title}}</h1>
+                <div class="article-content">
+                    {{.Content}}
+                </div>
+            </article>
+        </main>
+
+        <!-- Right Sidebar: TOC -->
+        <aside class="sidebar sidebar-right" id="sidebar-right">
+            <div class="sidebar-content">
+                <div class="sidebar-header">
+                    <h3>目录</h3>
+                </div>
+                <nav class="toc" id="toc">
+                    {{if .TOC}}
+                        {{template "toc-tree" .TOC}}
+                    {{else}}
+                        <p class="toc-empty">暂无目录</p>
+                    {{end}}
+                </nav>
+            </div>
+            <div class="resizer resizer-right" id="resizer-right"></div>
+        </aside>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
+
+{{define "nav-tree"}}
+    <ul class="nav-list">
+        {{range .}}
+            <li class="nav-item">
+                {{if .Path}}
+                    <a href="{{.URL}}" class="nav-link {{if .Active}}active{{end}}">{{.Title}}</a>
+                {{else}}
+                    <span class="nav-title">{{.Title}}</span>
+                {{end}}
+                {{if .Children}}
+                    {{template "nav-tree" .Children}}
+                {{end}}
+            </li>
+        {{end}}
+    </ul>
+{{end}}
+
+{{define "toc-tree"}}
+    <ul class="toc-list">
+        {{range .}}
+            <li class="toc-item">
+                <a href="#{{.ID}}" class="toc-link" data-level="{{.Level}}">{{.Title}}</a>
+                {{if .Children}}
+                    {{template "toc-tree" .Children}}
+                {{end}}
+            </li>
+        {{end}}
+    </ul>
+{{end}}
+

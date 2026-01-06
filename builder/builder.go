@@ -1,19 +1,62 @@
 package builder
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/hitzhangjie/gitbook/book"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // Builder builds a GitBook project
 type Builder struct {
 	Book      *book.Book
 	OutputDir string
+	template  *template.Template
+	md        goldmark.Markdown
 }
+
+// NavItem represents a navigation item
+type NavItem struct {
+	Title    string
+	Path     string
+	URL      string
+	Active   bool
+	Children []NavItem
+}
+
+// TOCItem represents a table of contents item
+type TOCItem struct {
+	Title    string
+	ID       string
+	Level    int
+	Children []TOCItem
+}
+
+// PageData represents data for page template
+type PageData struct {
+	Title       string
+	BookTitle   string
+	Content     template.HTML
+	NavTree     []NavItem
+	TOC         []TOCItem
+	CurrentPath string
+}
+
+//go:embed templates/page.html
+var pageTemplate embed.FS
+
+//go:embed static/*
+var staticFiles embed.FS
 
 // NewBuilder creates a new builder
 func NewBuilder(bookRoot, outputDir string) (*Builder, error) {
@@ -31,9 +74,28 @@ func NewBuilder(bookRoot, outputDir string) (*Builder, error) {
 		return nil, err
 	}
 
+	tmpl, err := template.ParseFS(pageTemplate, "templates/page.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load template: %w", err)
+	}
+
+	// Initialize goldmark
+	md := goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+		),
+		goldmark.WithRendererOptions(
+			html.WithHardWraps(),
+			html.WithXHTML(),
+		),
+	)
+
 	return &Builder{
 		Book:      b,
 		OutputDir: absOutput,
+		template:  tmpl,
+		md:        md,
 	}, nil
 }
 
@@ -51,6 +113,11 @@ func (b *Builder) Build() error {
 	// Copy static assets
 	if err := b.copyAssets(); err != nil {
 		return fmt.Errorf("failed to copy assets: %w", err)
+	}
+
+	// Copy static files (CSS, JS)
+	if err := b.copyStaticFiles(); err != nil {
+		return fmt.Errorf("failed to copy static files: %w", err)
 	}
 
 	// Generate HTML pages
@@ -102,15 +169,60 @@ func (b *Builder) copyAssets() error {
 	return nil
 }
 
+func (b *Builder) copyStaticFiles() error {
+	// Copy static files from embedded FS to _book/static
+	staticDst := filepath.Join(b.OutputDir, "static")
+	if err := os.MkdirAll(staticDst, 0755); err != nil {
+		return err
+	}
+
+	// Walk embedded static files
+	return b.copyEmbeddedFiles(staticFiles, "static", staticDst)
+}
+
+func (b *Builder) copyEmbeddedFiles(fs embed.FS, srcDir, dstDir string) error {
+	entries, err := fs.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(srcDir, entry.Name())
+		dstPath := filepath.Join(dstDir, entry.Name())
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, 0755); err != nil {
+				return err
+			}
+			if err := b.copyEmbeddedFiles(fs, srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			data, err := fs.ReadFile(srcPath)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(dstPath, data, 0644); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (b *Builder) generatePages() error {
 	if b.Book.Summary == nil {
 		return nil
 	}
 
-	return b.generateChapters(b.Book.Summary.Chapters, "")
+	// Build navigation tree
+	navTree := b.buildNavTree(b.Book.Summary.Chapters, "")
+
+	// Generate all pages
+	return b.generateChapters(b.Book.Summary.Chapters, "", navTree, "")
 }
 
-func (b *Builder) generateChapters(chapters []book.Chapter, basePath string) error {
+func (b *Builder) generateChapters(chapters []book.Chapter, basePath string, navTree []NavItem, currentPath string) error {
 	for _, chapter := range chapters {
 		if chapter.Path == "" {
 			continue
@@ -130,20 +242,44 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string) err
 			return fmt.Errorf("failed to convert markdown: %w", err)
 		}
 
-		// Generate HTML page
+		// Extract TOC from markdown
+		toc := b.extractTOC(string(content))
+
+		// Generate HTML page path
 		htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
 		if basePath != "" {
 			htmlPath = filepath.Join(basePath, htmlPath)
 		}
 		outputPath := filepath.Join(b.OutputDir, htmlPath)
+		relPath := htmlPath
 
 		// Create directory if needed
 		if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 			return err
 		}
 
+		// Mark active item in nav tree
+		activeNavTree := b.markActiveNavItem(navTree, relPath)
+
 		// Generate full HTML page
-		fullHTML := b.generatePageHTML(chapter.Title, html, chapter.Path)
+		bookTitle := "GitBook"
+		if b.Book.Config != nil && b.Book.Config.Title != "" {
+			bookTitle = b.Book.Config.Title
+		}
+
+		pageData := PageData{
+			Title:       chapter.Title,
+			BookTitle:   bookTitle,
+			Content:     template.HTML(html),
+			NavTree:     activeNavTree,
+			TOC:         toc,
+			CurrentPath: relPath,
+		}
+
+		fullHTML, err := b.renderTemplate(pageData)
+		if err != nil {
+			return fmt.Errorf("failed to render template: %w", err)
+		}
 
 		if err := os.WriteFile(outputPath, []byte(fullHTML), 0644); err != nil {
 			return err
@@ -151,7 +287,7 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string) err
 
 		// Recursively generate sub-chapters
 		if len(chapter.Articles) > 0 {
-			if err := b.generateChapters(chapter.Articles, filepath.Dir(htmlPath)); err != nil {
+			if err := b.generateChapters(chapter.Articles, filepath.Dir(htmlPath), navTree, relPath); err != nil {
 				return err
 			}
 		}
@@ -167,55 +303,166 @@ func (b *Builder) generateIndex() error {
 		readmePath = filepath.Join(b.Book.Root, b.Book.Config.Structure.Readme)
 	}
 
-	var content string
+	var content template.HTML
+	var toc []TOCItem
 	if data, err := os.ReadFile(readmePath); err == nil {
 		html, err := b.markdownToHTML(string(data))
 		if err == nil {
-			content = html
+			content = template.HTML(html)
+			toc = b.extractTOC(string(data))
 		}
 	}
 
-	title := "GitBook"
+	title := "Introduction"
+	bookTitle := "GitBook"
 	if b.Book.Config != nil && b.Book.Config.Title != "" {
-		title = b.Book.Config.Title
+		bookTitle = b.Book.Config.Title
 	}
 
-	html := b.generatePageHTML(title, content, "README.md")
-	return os.WriteFile(filepath.Join(b.OutputDir, "index.html"), []byte(html), 0644)
+	// Build navigation tree
+	var navTree []NavItem
+	if b.Book.Summary != nil {
+		navTree = b.buildNavTree(b.Book.Summary.Chapters, "")
+		navTree = b.markActiveNavItem(navTree, "index.html")
+	}
+
+	pageData := PageData{
+		Title:       title,
+		BookTitle:   bookTitle,
+		Content:     content,
+		NavTree:     navTree,
+		TOC:         toc,
+		CurrentPath: "index.html",
+	}
+
+	fullHTML, err := b.renderTemplate(pageData)
+	if err != nil {
+		return fmt.Errorf("failed to render template: %w", err)
+	}
+
+	return os.WriteFile(filepath.Join(b.OutputDir, "index.html"), []byte(fullHTML), 0644)
 }
 
 func (b *Builder) markdownToHTML(md string) (string, error) {
-	// Simple markdown to HTML conversion
-	// In a full implementation, you would use a proper markdown library
-	html := md
-	html = strings.ReplaceAll(html, "\n\n", "</p><p>")
-	html = strings.ReplaceAll(html, "\n", "<br>")
-	html = strings.ReplaceAll(html, "**", "<strong>")
-	html = strings.ReplaceAll(html, "*", "<em>")
-	html = "<p>" + html + "</p>"
-	return html, nil
+	var buf bytes.Buffer
+	if err := b.md.Convert([]byte(md), &buf); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
-func (b *Builder) generatePageHTML(title, content, path string) string {
-	// Generate a simple HTML page
-	// In a full implementation, you would use templates
-	return fmt.Sprintf(`<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>%s</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        h1, h2, h3 { color: #333; }
-        code { background: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
-        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
-    </style>
-</head>
-<body>
-    <h1>%s</h1>
-    %s
-</body>
-</html>`, title, title, content)
+func (b *Builder) renderTemplate(data PageData) (string, error) {
+	var buf bytes.Buffer
+	if err := b.template.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func (b *Builder) buildNavTree(chapters []book.Chapter, basePath string) []NavItem {
+	var items []NavItem
+	for _, chapter := range chapters {
+		item := NavItem{
+			Title: chapter.Title,
+			Path:  chapter.Path,
+		}
+
+		if chapter.Path != "" {
+			htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
+			if basePath != "" {
+				htmlPath = filepath.Join(basePath, htmlPath)
+			}
+			// Convert to relative URL
+			item.URL = "/" + strings.ReplaceAll(htmlPath, "\\", "/")
+		}
+
+		if len(chapter.Articles) > 0 {
+			nextBasePath := basePath
+			if chapter.Path != "" {
+				nextBasePath = filepath.Dir(item.URL)
+				if nextBasePath == "." {
+					nextBasePath = ""
+				}
+			}
+			item.Children = b.buildNavTree(chapter.Articles, nextBasePath)
+		}
+
+		items = append(items, item)
+	}
+	return items
+}
+
+func (b *Builder) markActiveNavItem(navTree []NavItem, currentPath string) []NavItem {
+	result := make([]NavItem, len(navTree))
+	for i, item := range navTree {
+		result[i] = item
+		if item.URL == "/"+strings.ReplaceAll(currentPath, "\\", "/") {
+			result[i].Active = true
+		}
+		if len(item.Children) > 0 {
+			result[i].Children = b.markActiveNavItem(item.Children, currentPath)
+			// If any child is active, mark parent as active too
+			for _, child := range result[i].Children {
+				if child.Active {
+					result[i].Active = true
+					break
+				}
+			}
+		}
+	}
+	return result
+}
+
+func (b *Builder) extractTOC(md string) []TOCItem {
+	var toc []TOCItem
+	lines := strings.Split(md, "\n")
+
+	// Regex to match markdown headers
+	headerRegex := regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+	var stack []*TOCItem
+
+	for _, line := range lines {
+		matches := headerRegex.FindStringSubmatch(line)
+		if matches == nil {
+			continue
+		}
+
+		level := len(matches[1])
+		title := strings.TrimSpace(matches[2])
+
+		// Generate ID from title
+		id := b.generateID(title)
+
+		item := TOCItem{
+			Title: title,
+			ID:    id,
+			Level: level,
+		}
+
+		// Find parent in stack
+		for len(stack) > 0 && stack[len(stack)-1].Level >= level {
+			stack = stack[:len(stack)-1]
+		}
+
+		if len(stack) == 0 {
+			toc = append(toc, item)
+			stack = append(stack, &toc[len(toc)-1])
+		} else {
+			parent := stack[len(stack)-1]
+			parent.Children = append(parent.Children, item)
+			stack = append(stack, &parent.Children[len(parent.Children)-1])
+		}
+	}
+
+	return toc
+}
+
+func (b *Builder) generateID(title string) string {
+	// Convert title to ID (similar to GitHub's heading ID generation)
+	id := strings.ToLower(title)
+	id = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(id, "-")
+	id = strings.Trim(id, "-")
+	return id
 }
 
 func copyDir(src, dst string) error {
