@@ -460,7 +460,13 @@ body {
     border: 0;
 }
 
-/* Scrollbar Styles */
+/* Scrollbar Styles - 默认隐藏，仅在滚动或悬停时显示 */
+.sidebar,
+.content {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+
 .sidebar::-webkit-scrollbar,
 .content::-webkit-scrollbar {
     width: 8px;
@@ -468,13 +474,52 @@ body {
 
 .sidebar::-webkit-scrollbar-track,
 .content::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: transparent;
 }
 
 .sidebar::-webkit-scrollbar-thumb,
 .content::-webkit-scrollbar-thumb {
-    background: #888;
+    background: transparent;
     border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+/* 悬停时显示滚动条 */
+.sidebar:hover::-webkit-scrollbar-thumb,
+.content:hover::-webkit-scrollbar-thumb {
+    background: #888;
+}
+
+.sidebar:hover::-webkit-scrollbar-track,
+.content:hover::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.sidebar:hover {
+    scrollbar-color: #888 #f1f1f1;
+}
+
+.content:hover {
+    scrollbar-color: #888 #f1f1f1;
+}
+
+/* 滚动时显示滚动条 */
+.sidebar.scrolling::-webkit-scrollbar-thumb,
+.content.scrolling::-webkit-scrollbar-thumb {
+    background: #888;
+}
+
+.sidebar.scrolling::-webkit-scrollbar-track,
+.content.scrolling::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.sidebar.scrolling {
+    scrollbar-color: #888 #f1f1f1;
+}
+
+.content.scrolling {
+    scrollbar-color: #888 #f1f1f1;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover,

@@ -838,3 +838,71 @@
     });
 })();
 
+// 滚动条显示控制：仅在滚动或悬停时显示
+(function() {
+    function initScrollbarVisibility(element) {
+        if (!element) return;
+        
+        let scrollTimeout;
+        
+        element.addEventListener('scroll', function() {
+            // 滚动时添加类
+            element.classList.add('scrolling');
+            
+            // 清除之前的定时器
+            clearTimeout(scrollTimeout);
+            
+            // 滚动停止后移除类
+            scrollTimeout = setTimeout(function() {
+                element.classList.remove('scrolling');
+            }, 500);
+        });
+    }
+    
+    // 初始化所有可滚动元素
+    function initAllScrollbars() {
+        const sidebars = document.querySelectorAll('.sidebar');
+        const content = document.getElementById('main-content');
+        
+        sidebars.forEach(function(sidebar) {
+            initScrollbarVisibility(sidebar);
+        });
+        
+        if (content) {
+            initScrollbarVisibility(content);
+        }
+    }
+    
+    // 页面加载时初始化
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAllScrollbars);
+    } else {
+        initAllScrollbars();
+    }
+    
+    // 监听页面内容更新（用于动态加载的内容）
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.addedNodes.length) {
+                const sidebars = document.querySelectorAll('.sidebar:not([data-scroll-init])');
+                const content = document.getElementById('main-content');
+                
+                sidebars.forEach(function(sidebar) {
+                    sidebar.setAttribute('data-scroll-init', 'true');
+                    initScrollbarVisibility(sidebar);
+                });
+                
+                if (content && !content.hasAttribute('data-scroll-init')) {
+                    content.setAttribute('data-scroll-init', 'true');
+                    initScrollbarVisibility(content);
+                }
+            }
+        });
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+})();
+
