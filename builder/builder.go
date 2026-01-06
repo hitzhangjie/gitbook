@@ -134,39 +134,55 @@ func (b *Builder) Build() error {
 }
 
 func (b *Builder) copyAssets() error {
-	// Copy images, fonts, etc.
-	assetsDirs := []string{"images", "fonts", "assets"}
-	for _, dir := range assetsDirs {
-		src := filepath.Join(b.Book.Root, dir)
-		if _, err := os.Stat(src); err == nil {
-			dst := filepath.Join(b.OutputDir, dir)
-			if err := copyDir(src, dst); err != nil {
-				return err
-			}
-		}
-	}
-
-	// Also copy .jpg, .jpeg, .png files in Book.Root to OutputDir (for book covers)
-	imagePatterns := []string{"*.jpg", "*.jpeg", "*.png"}
-	for _, pattern := range imagePatterns {
-		matches, err := filepath.Glob(filepath.Join(b.Book.Root, pattern))
+	// Walk the book root directory and copy all non-markdown files
+	// while preserving the directory structure
+	return filepath.Walk(b.Book.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			continue
+			return err
 		}
-		for _, src := range matches {
-			base := filepath.Base(src)
-			dst := filepath.Join(b.OutputDir, base)
-			data, err := os.ReadFile(src)
-			if err != nil {
-				continue
-			}
-			if err := os.WriteFile(dst, data, 0644); err != nil {
-				continue
-			}
-		}
-	}
 
-	return nil
+		// Skip directories that should not be copied
+		if info.IsDir() {
+			// Skip output directory and common hidden/system directories
+			base := filepath.Base(path)
+			if base == "_book" || base == ".git" || base == ".gitbook" || strings.HasPrefix(base, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Skip markdown files
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext == ".md" || ext == ".markdown" {
+			return nil
+		}
+
+		// Calculate relative path from book root
+		relPath, err := filepath.Rel(b.Book.Root, path)
+		if err != nil {
+			return err
+		}
+
+		// Build destination path
+		dstPath := filepath.Join(b.OutputDir, relPath)
+
+		// Create destination directory if needed
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0755); err != nil {
+			return err
+		}
+
+		// Copy file
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(dstPath, data, info.Mode()); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (b *Builder) copyStaticFiles() error {
