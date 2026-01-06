@@ -88,6 +88,7 @@ func NewBuilder(bookRoot, outputDir string) (*Builder, error) {
 		goldmark.WithRendererOptions(
 			html.WithHardWraps(),
 			html.WithXHTML(),
+			html.WithUnsafe(), // Allow raw HTML tags like <img>
 		),
 	)
 
