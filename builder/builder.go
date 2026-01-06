@@ -259,8 +259,8 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string, nav
 			return fmt.Errorf("failed to convert markdown: %w", err)
 		}
 
-		// Extract TOC from markdown
-		toc := b.extractTOC(string(content))
+		// Extract TOC from HTML to ensure IDs match exactly with goldmark's generated IDs
+		toc := b.extractTOCFromHTML(html)
 
 		// Generate HTML page path
 		htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
@@ -326,7 +326,7 @@ func (b *Builder) generateIndex() error {
 		html, err := b.markdownToHTML(string(data))
 		if err == nil {
 			content = template.HTML(html)
-			toc = b.extractTOC(string(data))
+			toc = b.extractTOCFromHTML(html)
 		}
 	}
 
@@ -430,25 +430,37 @@ func (b *Builder) markActiveNavItem(navTree []NavItem, currentPath string) []Nav
 	return result
 }
 
-func (b *Builder) extractTOC(md string) []TOCItem {
+// extractTOCFromHTML extracts TOC from HTML, ensuring IDs match exactly with goldmark's generated IDs
+func (b *Builder) extractTOCFromHTML(html string) []TOCItem {
 	var toc []TOCItem
-	lines := strings.Split(md, "\n")
 
-	// Regex to match markdown headers
-	headerRegex := regexp.MustCompile(`^(#{1,6})\s+(.+)$`)
+	// Regex to match HTML headings: <h1 id="xxx">, <h2 id="yyy">, etc.
+	// This ensures we get the exact IDs that goldmark generated
+	// Use (?s) flag to make . match newlines, and handle id attribute in any position
+	headingRegex := regexp.MustCompile(`(?s)<h([1-6])[^>]*id="([^"]+)"[^>]*>([\s\S]*?)</h[1-6]>`)
 	var stack []*TOCItem
 
-	for _, line := range lines {
-		matches := headerRegex.FindStringSubmatch(line)
-		if matches == nil {
+	matches := headingRegex.FindAllStringSubmatch(html, -1)
+	for _, match := range matches {
+		if len(match) < 4 {
 			continue
 		}
 
-		level := len(matches[1])
-		title := strings.TrimSpace(matches[2])
+		levelStr := match[1]
+		id := match[2]
+		titleHTML := match[3]
 
-		// Generate ID from title
-		id := b.generateID(title)
+		// Parse level
+		var level int
+		fmt.Sscanf(levelStr, "%d", &level)
+
+		// Extract plain text from HTML title (remove HTML tags)
+		title := b.extractTextFromHTML(titleHTML)
+
+		// Skip empty titles
+		if title == "" {
+			continue
+		}
 
 		item := TOCItem{
 			Title: title,
@@ -474,11 +486,95 @@ func (b *Builder) extractTOC(md string) []TOCItem {
 	return toc
 }
 
+// extractTextFromHTML extracts plain text from HTML, removing all HTML tags
+func (b *Builder) extractTextFromHTML(html string) string {
+	// Remove HTML tags
+	text := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(html, "")
+	// Decode HTML entities (basic ones)
+	text = strings.ReplaceAll(text, "&amp;", "&")
+	text = strings.ReplaceAll(text, "&lt;", "<")
+	text = strings.ReplaceAll(text, "&gt;", ">")
+	text = strings.ReplaceAll(text, "&quot;", "\"")
+	text = strings.ReplaceAll(text, "&#39;", "'")
+	text = strings.ReplaceAll(text, "&nbsp;", " ")
+	// Clean up whitespace
+	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
+	text = strings.TrimSpace(text)
+	return text
+}
+
+// removeMarkdownFormatting removes markdown formatting from text
+// This matches goldmark's behavior when generating heading IDs
+func (b *Builder) removeMarkdownFormatting(text string) string {
+	// Process in order to avoid conflicts - iterate until no more changes
+
+	for {
+		oldText := text
+
+		// Remove code blocks: `code` or ``code``
+		text = regexp.MustCompile("`+[^`]+`+").ReplaceAllString(text, "")
+
+		// Remove images: ![alt](url)
+		text = regexp.MustCompile(`!\[([^\]]*)\]\([^\)]+\)`).ReplaceAllString(text, "$1")
+
+		// Remove links: [text](url) or [text][ref]
+		text = regexp.MustCompile(`\[([^\]]+)\]\([^\)]+\)`).ReplaceAllString(text, "$1")
+		text = regexp.MustCompile(`\[([^\]]+)\]\[[^\]]+\]`).ReplaceAllString(text, "$1")
+
+		// Remove strikethrough: ~~text~~
+		text = regexp.MustCompile(`~~([^~]+)~~`).ReplaceAllString(text, "$1")
+
+		// Remove bold: **text** or __text__
+		text = regexp.MustCompile(`\*\*([^*]+)\*\*`).ReplaceAllString(text, "$1")
+		text = regexp.MustCompile(`__([^_]+)__`).ReplaceAllString(text, "$1")
+
+		// Remove italic: *text* or _text_ (single, not part of ** or __)
+		// Match *text* where * is not followed or preceded by another *
+		text = regexp.MustCompile(`([^*]|^)\*([^*\s][^*]*[^*\s])\*([^*]|$)`).ReplaceAllString(text, "${1}${2}${3}")
+		text = regexp.MustCompile(`([^_]|^)_([^_\s][^_]*[^_\s])_([^_]|$)`).ReplaceAllString(text, "${1}${2}${3}")
+
+		// Remove any remaining markdown link references: [text]
+		text = regexp.MustCompile(`\[([^\]]+)\]`).ReplaceAllString(text, "$1")
+
+		// Remove HTML tags if any
+		text = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(text, "")
+
+		// If no changes, break
+		if text == oldText {
+			break
+		}
+	}
+
+	// Clean up multiple spaces
+	text = regexp.MustCompile(`\s+`).ReplaceAllString(text, " ")
+
+	// Trim whitespace
+	text = strings.TrimSpace(text)
+
+	return text
+}
+
+// generateID generates an ID from a title, matching goldmark's WithAutoHeadingID behavior
+// This follows GitHub's heading ID generation algorithm
 func (b *Builder) generateID(title string) string {
-	// Convert title to ID (similar to GitHub's heading ID generation)
-	id := strings.ToLower(title)
+	// First remove markdown formatting
+	text := b.removeMarkdownFormatting(title)
+
+	// Convert to lowercase
+	id := strings.ToLower(text)
+
+	// Replace spaces and special characters with hyphens
+	// This matches GitHub's behavior: any sequence of non-alphanumeric characters becomes a single hyphen
 	id = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(id, "-")
+
+	// Remove leading and trailing hyphens
 	id = strings.Trim(id, "-")
+
+	// If empty after processing, use a default
+	if id == "" {
+		id = "heading"
+	}
+
 	return id
 }
 

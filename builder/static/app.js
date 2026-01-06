@@ -53,17 +53,23 @@
 (function() {
     const tocLinks = document.querySelectorAll('.toc-link');
     const headings = document.querySelectorAll('.article-content h1, .article-content h2, .article-content h3, .article-content h4');
+    const contentArea = document.getElementById('main-content');
 
-    if (tocLinks.length === 0 || headings.length === 0) return;
+    if (tocLinks.length === 0 || headings.length === 0 || !contentArea) return;
 
     function updateActiveTOC() {
         let current = '';
-        const scrollPos = window.scrollY + 100;
+        // Get scroll position of the content area, not the window
+        const scrollPos = contentArea.scrollTop + 100;
 
         headings.forEach((heading) => {
-            const top = heading.offsetTop;
+            // Calculate position relative to the content area
+            const headingRect = heading.getBoundingClientRect();
+            const contentRect = contentArea.getBoundingClientRect();
+            const relativeTop = headingRect.top - contentRect.top + contentArea.scrollTop;
             const id = heading.id;
-            if (top <= scrollPos) {
+            
+            if (relativeTop <= scrollPos) {
                 current = id;
             }
         });
@@ -76,18 +82,27 @@
         });
     }
 
-    // Add scroll event listener
-    window.addEventListener('scroll', updateActiveTOC);
+    // Add scroll event listener to content area instead of window
+    contentArea.addEventListener('scroll', updateActiveTOC);
     updateActiveTOC();
 
-    // Smooth scroll for TOC links
+    // Smooth scroll for TOC links - scroll within content area
     tocLinks.forEach((link) => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             const targetId = this.getAttribute('href').substring(1);
             const target = document.getElementById(targetId);
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (target && contentArea) {
+                // Calculate the position of target relative to content area
+                const targetRect = target.getBoundingClientRect();
+                const contentRect = contentArea.getBoundingClientRect();
+                const offsetTop = targetRect.top - contentRect.top + contentArea.scrollTop;
+                
+                // Smooth scroll the content area to the target position
+                contentArea.scrollTo({
+                    top: offsetTop - 20, // Add a small offset for better visibility
+                    behavior: 'smooth'
+                });
             }
         });
     });
