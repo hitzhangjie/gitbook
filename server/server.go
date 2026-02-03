@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -106,7 +108,28 @@ func (s *Server) Start() error {
 	fmt.Println("Live reload enabled - watching for file changes...")
 	fmt.Println("Press Ctrl+C to stop the server")
 
-	return s.httpServer.ListenAndServe()
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT)
+		<-sigChan
+		fmt.Println("\nShutting down...")
+		s.Stop()
+	}()
+
+	if err := s.httpServer.ListenAndServe(); err != nil {
+		if err != http.ErrServerClosed {
+			return fmt.Errorf("failed to start server: %w", err)
+		}
+		// log.Printf("Server closed: %v", err)
+	}
+
+	// Clean temporary _book when Start() returns
+	if err := os.RemoveAll(s.OutputDir); err != nil {
+		log.Printf("Failed to remove _book: %v", err)
+	} else {
+		log.Println("Cleaned up _book")
+	}
+	return err
 }
 
 // Stop stops the server
