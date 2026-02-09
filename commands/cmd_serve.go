@@ -8,7 +8,7 @@ import (
 
 // NewServeCommand creates the serve command
 func NewServeCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "serve [book]",
 		Short: "Serve the book on a local server",
 		Long:  "Start a local server to preview your book",
@@ -16,10 +16,13 @@ func NewServeCommand() *cobra.Command {
 			runCommand("serve", cmd.Flags(), args)
 		},
 	}
+	cmd.Flags().String("http", "localhost:4000", "HTTP listen address (e.g. 0.0.0.0:4000)")
+	return cmd
 }
 
 func handleServe(bookRoot string, fset *pflag.FlagSet, args []string) error {
-	srv, err := server.NewServer(bookRoot)
+	httpAddr, _ := fset.GetString("http")
+	srv, err := server.NewServer(bookRoot, httpAddr)
 	if err != nil {
 		return err
 	}

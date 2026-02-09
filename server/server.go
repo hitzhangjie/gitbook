@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -41,10 +43,22 @@ type UpdateMessage struct {
 	Path    string `json:"path,omitempty"`
 }
 
-// NewServer creates a new development server
-func NewServer(bookRoot string) (*Server, error) {
-	port := 4000
-	host := "localhost"
+const defaultHTTPAddr = "localhost:4000"
+
+// NewServer creates a new development server. httpAddr is the listen address (e.g. "localhost:4000" or "0.0.0.0:8080");
+// if empty, default "localhost:4000" is used.
+func NewServer(bookRoot string, httpAddr string) (*Server, error) {
+	if httpAddr == "" {
+		httpAddr = defaultHTTPAddr
+	}
+	host, portStr, err := net.SplitHostPort(httpAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid http address %q: %w", httpAddr, err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid port in http address %q", httpAddr)
+	}
 
 	b, err := book.LoadBook(bookRoot)
 	if err != nil {
