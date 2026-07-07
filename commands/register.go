@@ -42,9 +42,11 @@ func runCommand(commandName string, fset *pflag.FlagSet, args []string) {
 		absBookRoot = bookRoot
 	}
 
-	// Ensure book root exists
-	if _, err := os.Stat(absBookRoot); err != nil {
-		absBookRoot, _ = os.Getwd()
+	// Ensure book root exists (build validates the book project separately)
+	if commandName != "build" {
+		if _, err := os.Stat(absBookRoot); err != nil {
+			absBookRoot, _ = os.Getwd()
+		}
 	}
 
 	switch commandName {

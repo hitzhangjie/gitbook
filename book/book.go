@@ -49,6 +49,35 @@ type Chapter struct {
 	Articles []Chapter
 }
 
+// ValidateBookRoot checks that the path exists and contains book.json.
+func ValidateBookRoot(root string) error {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return fmt.Errorf("invalid book directory: %w", err)
+	}
+
+	info, err := os.Stat(absRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("book directory not found: %s", absRoot)
+		}
+		return fmt.Errorf("failed to access book directory %s: %w", absRoot, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("book path is not a directory: %s", absRoot)
+	}
+
+	configPath := filepath.Join(absRoot, "book.json")
+	if _, err := os.Stat(configPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("not a valid GitBook project: book.json not found in %s", absRoot)
+		}
+		return fmt.Errorf("failed to access book.json in %s: %w", absRoot, err)
+	}
+
+	return nil
+}
+
 // LoadBook loads a book from a directory
 func LoadBook(root string) (*Book, error) {
 	absRoot, err := filepath.Abs(root)
