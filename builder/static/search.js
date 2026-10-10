@@ -11,6 +11,7 @@
     let hits = [];
     let active = -1;
     let requestID = 0;
+    let reveal = null;
 
     function normalize(value) {
         return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -134,7 +135,7 @@
         return (start > 0 ? '…' : '') + source.slice(start, end) + (end < source.length ? '…' : '');
     }
 
-    function highlightInto(parent, text, terms) {
+    function matchRanges(text, terms) {
         const lower = text.toLowerCase();
         const ranges = [];
         terms.forEach(function(term) {
@@ -157,6 +158,11 @@
                 last[1] = Math.max(last[1], range[1]);
             }
         });
+        return merged;
+    }
+
+    function highlightInto(parent, text, terms) {
+        const merged = matchRanges(text, terms);
         let cursor = 0;
         merged.forEach(function(range) {
             if (range[0] > cursor) {
@@ -170,6 +176,87 @@
         if (cursor < text.length) {
             parent.appendChild(document.createTextNode(text.slice(cursor)));
         }
+    }
+
+    function clearContentHighlights() {
+        const root = document.querySelector('.article-content');
+        if (!root) return;
+        root.querySelectorAll('mark.search-hit').forEach(function(mark) {
+            const parent = mark.parentNode;
+            if (!parent) return;
+            parent.replaceChild(document.createTextNode(mark.textContent), mark);
+        });
+        root.normalize();
+    }
+
+    function highlightTextNode(node, terms) {
+        const text = node.nodeValue;
+        if (!text) return;
+        const merged = matchRanges(text, terms);
+        if (!merged.length) return;
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        merged.forEach(function(range) {
+            if (range[0] > cursor) {
+                frag.appendChild(document.createTextNode(text.slice(cursor, range[0])));
+            }
+            const mark = document.createElement('mark');
+            mark.className = 'search-hit';
+            mark.textContent = text.slice(range[0], range[1]);
+            frag.appendChild(mark);
+            cursor = range[1];
+        });
+        if (cursor < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(cursor)));
+        }
+        if (node.parentNode) {
+            node.parentNode.replaceChild(frag, node);
+        }
+    }
+
+    function applyContentHighlight(terms) {
+        const root = document.querySelector('.article-content');
+        if (!root) return;
+        clearContentHighlights();
+        if (!terms.length) return;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode: function(node) {
+                if (!node.nodeValue || !node.parentNode) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(function(node) {
+            highlightTextNode(node, terms);
+        });
+    }
+
+    function scrollToMatch(anchor) {
+        const root = document.querySelector('.article-content');
+        const contentArea = document.getElementById('main-content');
+        if (!root || !contentArea) return;
+        const marks = root.querySelectorAll('mark.search-hit');
+        if (!marks.length) return;
+
+        let mark = marks[0];
+        if (anchor) {
+            const heading = document.getElementById(anchor);
+            if (heading) {
+                for (let i = 0; i < marks.length; i++) {
+                    const pos = heading.compareDocumentPosition(marks[i]);
+                    if (heading.contains(marks[i]) || (pos & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                        mark = marks[i];
+                        break;
+                    }
+                }
+            }
+        }
+
+        const targetRect = mark.getBoundingClientRect();
+        const contentRect = contentArea.getBoundingClientRect();
+        const top = targetRect.top - contentRect.top + contentArea.scrollTop - 80;
+        contentArea.scrollTop = Math.max(0, top);
     }
 
     function hitURL(hit) {
@@ -196,12 +283,26 @@
     }
 
     function openHit(hit) {
+        reveal = {
+            terms: termsOf(input.value).join('\n'),
+            anchor: hit.titleOnly ? '' : (hit.section.anchor || '')
+        };
         const url = hitURL(hit);
         if (typeof window.gitbookLoadPage === 'function') {
-            window.gitbookLoadPage(url);
+            window.gitbookLoadPage(url, { scroll: 'auto' });
             return;
         }
         window.location.href = url;
+    }
+
+    function onPageReady() {
+        const terms = termsOf(input.value);
+        applyContentHighlight(terms);
+        if (!reveal) return;
+        const job = reveal;
+        reveal = null;
+        if (job.terms !== terms.join('\n')) return;
+        scrollToMatch(job.anchor);
     }
 
     function syncHint() {
@@ -215,11 +316,14 @@
         active = -1;
         syncHint();
         if (!terms.length) {
+            reveal = null;
             resultsEl.hidden = true;
             nav.hidden = false;
             hits = [];
+            applyContentHighlight([]);
             return;
         }
+        applyContentHighlight(terms);
 
         nav.hidden = true;
         resultsEl.hidden = false;
@@ -315,6 +419,8 @@
         input.focus();
         input.select();
     });
+
+    window.addEventListener('gitbook:page', onPageReady);
 
     loadIndex();
 })();

@@ -1,3 +1,7 @@
+function notifyGitbookPage() {
+    window.dispatchEvent(new CustomEvent('gitbook:page'));
+}
+
 // Reader settings: sidebar widths persisted in localStorage
 (function() {
     const STORAGE_KEY = 'gitbook.settings';
@@ -336,8 +340,9 @@
                 window.history.pushState({ path: nextURL }, '', nextURL);
             }
             if (targetHash) {
-                scrollContentToHash(targetHash);
+                scrollContentToHash(targetHash, opts.scroll === 'auto' ? 'auto' : undefined);
             }
+            notifyGitbookPage();
             return;
         }
 
@@ -439,6 +444,8 @@
                     if (newDoc.title) {
                         document.title = newDoc.title;
                     }
+
+                    notifyGitbookPage();
                     
                     // Reinitialize TOC scroll spy and navtree links
                     setTimeout(() => {
@@ -785,6 +792,7 @@
                     
                     // Fade in
                     currentContent.style.opacity = '1';
+                    notifyGitbookPage();
                     console.log('Content updated successfully');
 
                     // Update TOC after content is updated

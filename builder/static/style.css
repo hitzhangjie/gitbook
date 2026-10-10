@@ -658,7 +658,8 @@ body {
     word-break: break-word;
 }
 
-.search-result mark {
+.search-result mark,
+.article-content mark.search-hit {
     padding: 0 1px;
     border-radius: 2px;
     background: #fff3bf;
