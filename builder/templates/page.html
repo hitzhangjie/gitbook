@@ -38,7 +38,12 @@
                         </svg>
                     </button>
                 </div>
-                <nav class="nav-tree sidebar-scroll">
+                <div class="book-search">
+                    <input type="search" id="search-input" placeholder="搜索全书" autocomplete="off" spellcheck="false" aria-label="搜索全书" aria-controls="search-results" aria-autocomplete="list">
+                    <kbd class="search-kbd" id="search-kbd">/</kbd>
+                </div>
+                <div class="search-results sidebar-scroll" id="search-results" hidden></div>
+                <nav class="nav-tree sidebar-scroll" id="nav-tree">
                     {{template "nav-tree" .NavTree}}
                 </nav>
             </div>
@@ -101,6 +106,7 @@
         </div>
     </div>
     <script src="/static/app.js"></script>
+    <script src="/static/search.js"></script>
 </body>
 </html>
 

@@ -281,8 +281,66 @@
         });
     };
     
-    // Load page content without refreshing navtree
-    async function loadPage(url) {
+    function splitURL(url) {
+        const raw = url || '';
+        const hashIndex = raw.indexOf('#');
+        const hash = hashIndex >= 0 ? raw.slice(hashIndex) : '';
+        let path = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
+        if (!path) {
+            path = window.location.pathname || '/';
+        }
+        return { path: path, hash: hash };
+    }
+
+    function isSamePath(path) {
+        const current = window.location.pathname;
+        return path === current || path + '/' === current || path === current + '/';
+    }
+
+    function scrollContentToHash(hash, behavior) {
+        if (!hash) return;
+        let id = hash.replace(/^#/, '');
+        try {
+            id = decodeURIComponent(id);
+        } catch (e) {}
+        const contentArea = document.getElementById('main-content');
+        const target = document.getElementById(id);
+        if (!contentArea || !target) return;
+        const targetRect = target.getBoundingClientRect();
+        const contentRect = contentArea.getBoundingClientRect();
+        const offsetTop = targetRect.top - contentRect.top + contentArea.scrollTop;
+        const top = Math.max(0, offsetTop - 20);
+        if (behavior === 'auto') {
+            contentArea.scrollTop = top;
+            return;
+        }
+        contentArea.scrollTo({
+            top: top,
+            behavior: 'smooth'
+        });
+    }
+
+    window.gitbookScrollToHash = scrollContentToHash;
+
+    // Load page content without refreshing navtree.
+    // opts.pop is set when handling browser back/forward, so history is not pushed again.
+    async function loadPage(url, opts) {
+        opts = opts || {};
+        const parts = splitURL(url);
+        const targetPath = parts.path;
+        const targetHash = parts.hash;
+        const nextURL = targetPath + targetHash;
+
+        if (isSamePath(targetPath) && document.querySelector('.article-content')) {
+            if (!opts.pop && (window.location.pathname + window.location.hash) !== nextURL) {
+                window.history.pushState({ path: nextURL }, '', nextURL);
+            }
+            if (targetHash) {
+                scrollContentToHash(targetHash);
+            }
+            return;
+        }
+
         try {
             const contentArea = document.getElementById('main-content');
             if (!contentArea) {
@@ -303,7 +361,7 @@
             }
             
             // Fetch new page
-            const response = await fetch(url, {
+            const response = await fetch(targetPath, {
                 headers: {
                     'Cache-Control': 'no-cache',
                     'Pragma': 'no-cache'
@@ -326,7 +384,7 @@
             
             if (!newContent) {
                 // Fallback to full page load
-                window.location.href = url;
+                window.location.href = nextURL;
                 return;
             }
             
@@ -348,7 +406,7 @@
                 setTimeout(() => {
                     const currentContent = document.querySelector('.article-content');
                     if (!currentContent) {
-                        window.location.href = url;
+                        window.location.href = nextURL;
                         return;
                     }
                     
@@ -368,15 +426,19 @@
                     }
                     
                     // Update active state in navtree (without refreshing the whole tree)
-                    updateNavTreeActiveState(url);
-                    
+                    updateNavTreeActiveState(targetPath);
+
                     // Update URL and history
-                    window.history.pushState({ path: url }, '', url);
-                    
-                    // Update page title
-                    const pageTitle = newTitle ? newTitle.textContent : '';
-                    const bookTitle = document.querySelector('.sidebar-header h2')?.textContent || 'GitBook';
-                    document.title = pageTitle ? `${pageTitle} - ${bookTitle}` : bookTitle;
+                    if (!opts.pop) {
+                        window.history.pushState({ path: nextURL }, '', nextURL);
+                    }
+                    if (targetHash) {
+                        scrollContentToHash(targetHash, 'auto');
+                    }
+
+                    if (newDoc.title) {
+                        document.title = newDoc.title;
+                    }
                     
                     // Reinitialize TOC scroll spy and navtree links
                     setTimeout(() => {
@@ -401,14 +463,14 @@
         } catch (error) {
             console.error('Failed to load page:', error);
             // Fallback to full page load
-            window.location.href = url;
+            window.location.href = nextURL;
         }
     }
     
     // Update active state in navtree without refreshing the whole tree
     function updateNavTreeActiveState(currentUrl) {
         const navLinks = document.querySelectorAll('.nav-link');
-        const currentPath = currentUrl.replace(window.location.origin, '');
+        const currentPath = currentUrl.replace(window.location.origin, '').split('#')[0];
         
         navLinks.forEach((link) => {
             const href = link.getAttribute('href');
@@ -422,15 +484,19 @@
     
     // Handle browser back/forward buttons
     window.addEventListener('popstate', function(e) {
-        if (e.state && e.state.path) {
-            loadPage(e.state.path);
-        } else {
-            loadPage(window.location.pathname);
-        }
+        const target = (e.state && e.state.path) || (window.location.pathname + window.location.hash);
+        loadPage(target, { pop: true });
     });
-    
+
+    window.gitbookLoadPage = loadPage;
+
     // Initialize on page load
     window.initNavTreeLinks();
+    if (window.location.hash) {
+        requestAnimationFrame(function() {
+            scrollContentToHash(window.location.hash);
+        });
+    }
 })();
 
 // TOC scroll spy
@@ -637,6 +703,9 @@
             }
 
             const newHTML = await response.text();
+            if (typeof window.gitbookReloadSearchIndex === 'function') {
+                window.gitbookReloadSearchIndex();
+            }
 
             // Parse new HTML using DOMParser to handle full HTML documents
             const parser = new DOMParser();

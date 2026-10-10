@@ -19,10 +19,11 @@ import (
 
 // Builder builds a GitBook project
 type Builder struct {
-	Book      *book.Book
-	OutputDir string
-	template  *template.Template
-	md        goldmark.Markdown
+	Book       *book.Book
+	OutputDir  string
+	template   *template.Template
+	md         goldmark.Markdown
+	searchDocs []searchDoc
 }
 
 // NavItem represents a navigation item
@@ -103,6 +104,8 @@ func NewBuilder(bookRoot, outputDir string) (*Builder, error) {
 
 // Build builds the book
 func (b *Builder) Build() error {
+	b.searchDocs = nil
+
 	// Clean output directory
 	if err := os.RemoveAll(b.OutputDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to clean output directory: %w", err)
@@ -130,6 +133,10 @@ func (b *Builder) Build() error {
 	// Generate index.html
 	if err := b.generateIndex(); err != nil {
 		return fmt.Errorf("failed to generate index: %w", err)
+	}
+
+	if err := b.writeSearchIndex(); err != nil {
+		return fmt.Errorf("failed to write search index: %w", err)
 	}
 
 	return nil
@@ -266,9 +273,10 @@ func (b *Builder) generateChapters(chapters []book.Chapter, basePath string, nav
 		// Generate HTML page path
 		// chapter.Path is already a relative path from book root (e.g., "4-basics/README.md")
 		// So we should use it directly without basePath
-		htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
+		htmlPath := strings.TrimSuffix(chapter.Path, filepath.Ext(chapter.Path)) + ".html"
 		outputPath := filepath.Join(b.OutputDir, htmlPath)
 		relPath := htmlPath
+		b.addSearchDoc(chapter.Title, htmlPageURL(chapter.Path), html, chapter.Path)
 
 		// Create directory if needed
 		if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
@@ -344,6 +352,14 @@ func (b *Builder) generateIndex() error {
 		navTree = b.markActiveNavItem(navTree, "index.html")
 	}
 
+	if len(content) > 0 && !b.hasSearchSource(b.readmeRelPath()) {
+		indexTitle := title
+		if heading := firstHeading(string(content)); heading != "" {
+			indexTitle = heading
+		}
+		b.addSearchDoc(indexTitle, "/", string(content), b.readmeRelPath())
+	}
+
 	pageData := PageData{
 		Title:       title,
 		BookTitle:   bookTitle,
@@ -392,10 +408,7 @@ func (b *Builder) buildNavTreeWithLevel(chapters []book.Chapter, basePath string
 
 		if chapter.Path != "" {
 			// chapter.Path is already a relative path from book root (e.g., "4-basics/README.md")
-			// So we should use it directly without basePath
-			htmlPath := strings.TrimSuffix(chapter.Path, ".md") + ".html"
-			// Convert to relative URL
-			item.URL = "/" + strings.ReplaceAll(htmlPath, "\\", "/")
+			item.URL = htmlPageURL(chapter.Path)
 		}
 
 		if len(chapter.Articles) > 0 {
