@@ -985,7 +985,8 @@
 // 滚动条显示控制：仅在滚动或悬停时显示
 (function() {
     function initScrollbarVisibility(element) {
-        if (!element) return;
+        if (!element || element.hasAttribute('data-scroll-init')) return;
+        element.setAttribute('data-scroll-init', 'true');
         
         let scrollTimeout;
         
@@ -1005,16 +1006,9 @@
     
     // 初始化所有可滚动元素
     function initAllScrollbars() {
-        const sidebars = document.querySelectorAll('.sidebar');
-        const content = document.getElementById('main-content');
-        
-        sidebars.forEach(function(sidebar) {
-            initScrollbarVisibility(sidebar);
+        document.querySelectorAll('.sidebar-scroll, #main-content').forEach(function(element) {
+            initScrollbarVisibility(element);
         });
-        
-        if (content) {
-            initScrollbarVisibility(content);
-        }
     }
     
     // 页面加载时初始化
@@ -1028,18 +1022,9 @@
     const observer = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
             if (mutation.addedNodes.length) {
-                const sidebars = document.querySelectorAll('.sidebar:not([data-scroll-init])');
-                const content = document.getElementById('main-content');
-                
-                sidebars.forEach(function(sidebar) {
-                    sidebar.setAttribute('data-scroll-init', 'true');
-                    initScrollbarVisibility(sidebar);
+                document.querySelectorAll('.sidebar-scroll:not([data-scroll-init]), #main-content:not([data-scroll-init])').forEach(function(element) {
+                    initScrollbarVisibility(element);
                 });
-                
-                if (content && !content.hasAttribute('data-scroll-init')) {
-                    content.setAttribute('data-scroll-init', 'true');
-                    initScrollbarVisibility(content);
-                }
             }
         });
     });

@@ -38,7 +38,7 @@
                         </svg>
                     </button>
                 </div>
-                <nav class="nav-tree">
+                <nav class="nav-tree sidebar-scroll">
                     {{template "nav-tree" .NavTree}}
                 </nav>
             </div>
@@ -60,7 +60,7 @@
                 <div class="sidebar-header">
                     <h3>&nbsp;&nbsp;&nbsp;目录</h3>
                 </div>
-                <nav class="toc" id="toc">
+                <nav class="toc sidebar-scroll" id="toc">
                     {{if .TOC}}
                         {{template "toc-tree" .TOC}}
                     {{else}}
