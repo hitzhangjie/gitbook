@@ -1,3 +1,140 @@
+// Reader settings: sidebar widths persisted in localStorage
+(function() {
+    const STORAGE_KEY = 'gitbook.settings';
+    const DEFAULTS = { navWidth: 250, tocWidth: 250 };
+    const MIN = 150;
+    const MAX = 500;
+
+    function clamp(n) {
+        n = Number(n);
+        if (!Number.isFinite(n)) return null;
+        return Math.max(MIN, Math.min(MAX, Math.round(n)));
+    }
+
+    function load() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+            const data = JSON.parse(raw);
+            return {
+                navWidth: clamp(data.navWidth) || DEFAULTS.navWidth,
+                tocWidth: clamp(data.tocWidth) || DEFAULTS.tocWidth
+            };
+        } catch (e) {
+            return { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+        }
+    }
+
+    let current = load();
+
+    function persist() {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                navWidth: current.navWidth,
+                tocWidth: current.tocWidth
+            }));
+        } catch (e) {}
+    }
+
+    function syncControls() {
+        const nav = document.getElementById('setting-nav-width');
+        const toc = document.getElementById('setting-toc-width');
+        const navValue = document.getElementById('setting-nav-width-value');
+        const tocValue = document.getElementById('setting-toc-width-value');
+        if (nav) nav.value = String(current.navWidth);
+        if (toc) toc.value = String(current.tocWidth);
+        if (navValue) navValue.textContent = current.navWidth + 'px';
+        if (tocValue) tocValue.textContent = current.tocWidth + 'px';
+    }
+
+    function applyWidths() {
+        document.documentElement.style.setProperty('--sidebar-left-width', current.navWidth + 'px');
+        document.documentElement.style.setProperty('--sidebar-right-width', current.tocWidth + 'px');
+        syncControls();
+        window.dispatchEvent(new Event('resize'));
+    }
+
+    function setWidth(side, width, shouldPersist) {
+        const value = clamp(width);
+        if (value == null) return null;
+        if (side === 'left') {
+            current.navWidth = value;
+        } else {
+            current.tocWidth = value;
+        }
+        applyWidths();
+        if (shouldPersist) persist();
+        return value;
+    }
+
+    function reset() {
+        current = { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch (e) {}
+        applyWidths();
+    }
+
+    function initPanel() {
+        const openBtn = document.getElementById('settings-btn');
+        const overlay = document.getElementById('settings-overlay');
+        const closeBtn = document.getElementById('settings-close');
+        const resetBtn = document.getElementById('settings-reset');
+        const nav = document.getElementById('setting-nav-width');
+        const toc = document.getElementById('setting-toc-width');
+        const panel = document.getElementById('settings-panel');
+        if (!openBtn || !overlay || !panel) return;
+
+        function open() {
+            syncControls();
+            overlay.hidden = false;
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function close() {
+            overlay.hidden = true;
+            openBtn.focus();
+        }
+
+        openBtn.addEventListener('click', open);
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        if (resetBtn) resetBtn.addEventListener('click', reset);
+
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) close();
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !overlay.hidden) {
+                e.preventDefault();
+                close();
+            }
+        });
+
+        if (nav) {
+            nav.addEventListener('input', function() {
+                setWidth('left', this.value, true);
+            });
+        }
+        if (toc) {
+            toc.addEventListener('input', function() {
+                setWidth('right', this.value, true);
+            });
+        }
+    }
+
+    applyWidths();
+    initPanel();
+
+    window.gitbookSettings = {
+        setWidth: setWidth,
+        persist: persist,
+        get: function() {
+            return { navWidth: current.navWidth, tocWidth: current.tocWidth };
+        }
+    };
+})();
+
 // Resizer functionality
 (function() {
     let isResizing = false;
@@ -63,8 +200,12 @@
         const isLeft = sidebar.classList.contains('sidebar-left');
         const deltaX = isLeft ? (e.clientX - startX) : (startX - e.clientX);
         const newWidth = Math.max(150, Math.min(500, startWidth + deltaX));
-        
-        sidebar.style.width = newWidth + 'px';
+
+        if (window.gitbookSettings) {
+            window.gitbookSettings.setWidth(isLeft ? 'left' : 'right', newWidth, false);
+        } else {
+            sidebar.style.width = newWidth + 'px';
+        }
         updateResizerPosition(currentResizer, sidebar);
     });
 
@@ -82,6 +223,9 @@
             }
             currentResizer = null;
             document.body.style.cursor = '';
+            if (window.gitbookSettings) {
+                window.gitbookSettings.persist();
+            }
         }
     });
 

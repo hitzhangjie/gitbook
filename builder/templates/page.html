@@ -4,6 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Title}} - {{.BookTitle}}</title>
+    <script>
+        (function () {
+            try {
+                var raw = localStorage.getItem('gitbook.settings');
+                if (!raw) return;
+                var data = JSON.parse(raw);
+                function clamp(n) {
+                    n = Number(n);
+                    if (!isFinite(n)) return null;
+                    return Math.max(150, Math.min(500, Math.round(n)));
+                }
+                var nav = clamp(data.navWidth);
+                var toc = clamp(data.tocWidth);
+                if (nav) document.documentElement.style.setProperty('--sidebar-left-width', nav + 'px');
+                if (toc) document.documentElement.style.setProperty('--sidebar-right-width', toc + 'px');
+            } catch (e) {}
+        })();
+    </script>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,6 +31,12 @@
             <div class="sidebar-content">
                 <div class="sidebar-header">
                     <h2>{{.BookTitle}}</h2>
+                    <button type="button" class="settings-btn" id="settings-btn" title="设置" aria-label="打开设置" aria-haspopup="dialog" aria-controls="settings-panel">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
                 </div>
                 <nav class="nav-tree">
                     {{template "nav-tree" .NavTree}}
@@ -46,6 +70,35 @@
             </div>
             <div class="resizer resizer-right" id="resizer-right"></div>
         </aside>
+    </div>
+
+    <div class="settings-overlay" id="settings-overlay" hidden>
+        <div class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="settings-panel-header">
+                <h3 id="settings-title">设置</h3>
+                <button type="button" class="settings-close" id="settings-close" aria-label="关闭设置">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-field">
+                    <div class="settings-label-row">
+                        <label for="setting-nav-width">左侧章节目录宽度</label>
+                        <span class="settings-value" id="setting-nav-width-value">250px</span>
+                    </div>
+                    <input type="range" id="setting-nav-width" min="150" max="500" step="1" value="250">
+                </div>
+                <div class="settings-field">
+                    <div class="settings-label-row">
+                        <label for="setting-toc-width">右侧本章目录宽度</label>
+                        <span class="settings-value" id="setting-toc-width-value">250px</span>
+                    </div>
+                    <input type="range" id="setting-toc-width" min="150" max="500" step="1" value="250">
+                </div>
+                <p class="settings-note">设置保存在本机浏览器中，下次打开会自动恢复。</p>
+            </div>
+            <div class="settings-footer">
+                <button type="button" class="settings-reset" id="settings-reset">重置设置</button>
+            </div>
+        </div>
     </div>
     <script src="/static/app.js"></script>
 </body>
