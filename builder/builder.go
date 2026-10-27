@@ -6,15 +6,18 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/hitzhangjie/gitbook/book"
 	"github.com/yuin/goldmark"
+	mdast "github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/text"
 )
 
 // Builder builds a GitBook project
@@ -378,11 +381,54 @@ func (b *Builder) generateIndex() error {
 }
 
 func (b *Builder) markdownToHTML(md string) (string, error) {
+	source := []byte(md)
+	reader := text.NewReader(source)
+	doc := b.md.Parser().Parse(reader)
+	_ = mdast.Walk(doc, func(n mdast.Node, entering bool) (mdast.WalkStatus, error) {
+		if !entering {
+			return mdast.WalkContinue, nil
+		}
+		link, ok := n.(*mdast.Link)
+		if !ok {
+			return mdast.WalkContinue, nil
+		}
+		link.Destination = rewriteMarkdownDestination(link.Destination)
+		return mdast.WalkContinue, nil
+	})
+
 	var buf bytes.Buffer
-	if err := b.md.Convert([]byte(md), &buf); err != nil {
+	if err := b.md.Renderer().Render(&buf, source, doc); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// rewriteMarkdownDestination turns an in-book markdown link into the generated HTML page.
+// Relative paths stay relative, so a book served under a URL prefix still resolves correctly.
+func rewriteMarkdownDestination(dest []byte) []byte {
+	raw := string(dest)
+	if raw == "" || strings.HasPrefix(raw, "#") {
+		return dest
+	}
+	pathPart, suffix := raw, ""
+	if i := strings.IndexAny(raw, "?#"); i >= 0 {
+		pathPart, suffix = raw[:i], raw[i:]
+	}
+	if pathPart == "" || isExternalURL(pathPart) {
+		return dest
+	}
+	ext := path.Ext(pathPart)
+	switch strings.ToLower(ext) {
+	case ".md", ".markdown":
+	default:
+		return dest
+	}
+	return []byte(pathPart[:len(pathPart)-len(ext)] + ".html" + suffix)
+}
+
+func isExternalURL(pathPart string) bool {
+	lower := strings.ToLower(pathPart)
+	return strings.Contains(pathPart, "://") || strings.HasPrefix(pathPart, "//") || strings.HasPrefix(lower, "mailto:")
 }
 
 func (b *Builder) renderTemplate(data PageData) (string, error) {

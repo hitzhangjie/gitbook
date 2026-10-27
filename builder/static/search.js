@@ -4,6 +4,10 @@
     const resultsEl = document.getElementById('search-results');
     const nav = document.getElementById('nav-tree');
     const hint = document.getElementById('search-kbd');
+    const sortRoot = document.getElementById('search-sort');
+    const sortBtn = document.getElementById('search-sort-btn');
+    const sortPanel = document.getElementById('search-sort-panel');
+    const sortHintEl = document.getElementById('search-sort-hint');
     if (!input || !resultsEl || !nav) return;
 
     let index = null;
@@ -12,6 +16,27 @@
     let active = -1;
     let requestID = 0;
     let reveal = null;
+    // Chapter order follows the page order in the search index, which is SUMMARY.md depth-first.
+    // Relevance descending is the original default: higher score first.
+    let sortBy = 'relevance';
+    let sortDir = 'desc';
+    try {
+        const raw = sessionStorage.getItem('gitbook.searchSort');
+        if (raw === 'chapter' || sessionStorage.getItem('gitbook.searchChapterSort') === '1') {
+            sortBy = 'chapter';
+            sortDir = 'asc';
+        } else if (raw === 'chapter-reverse') {
+            sortBy = 'chapter';
+            sortDir = 'desc';
+        } else if (raw === 'relevance-reverse') {
+            sortBy = 'relevance';
+            sortDir = 'asc';
+        } else if (raw && raw.charAt(0) === '{') {
+            const data = JSON.parse(raw);
+            if (data.by === 'chapter' || data.by === 'relevance') sortBy = data.by;
+            if (data.dir === 'asc' || data.dir === 'desc') sortDir = data.dir;
+        }
+    } catch (e) {}
 
     function normalize(value) {
         return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -70,14 +95,16 @@
         if (!terms.length || !index) return [];
 
         const grouped = new Map();
-        (index.pages || []).forEach(function(page) {
+        (index.pages || []).forEach(function(page, pageIndex) {
             const pageHits = [];
-            (page.sections || []).forEach(function(section) {
+            (page.sections || []).forEach(function(section, sectionIndex) {
                 if (!sectionMatches(section, terms)) return;
                 pageHits.push({
                     page: page,
                     section: section,
-                    score: scoreHit(page, section, terms)
+                    score: scoreHit(page, section, terms),
+                    pageIndex: pageIndex,
+                    sectionIndex: sectionIndex
                 });
             });
             const titleBlob = normalize(page.title);
@@ -87,11 +114,13 @@
                     page: page,
                     section: section,
                     score: 6,
+                    pageIndex: pageIndex,
+                    sectionIndex: -1,
                     titleOnly: true
                 });
             }
             if (!pageHits.length) return;
-            pageHits.sort(function(a, b) { return b.score - a.score; });
+            pageHits.sort(compareHits);
             grouped.set(page.url, pageHits.slice(0, 3));
         });
 
@@ -99,11 +128,68 @@
         grouped.forEach(function(pageHits) {
             pageHits.forEach(function(hit) { list.push(hit); });
         });
-        list.sort(function(a, b) {
-            if (b.score !== a.score) return b.score - a.score;
-            return String(a.page.title).localeCompare(String(b.page.title), 'zh');
-        });
+        list.sort(compareHits);
         return list.slice(0, 30);
+    }
+
+    function compareHits(a, b) {
+        let cmp = 0;
+        if (sortBy === 'chapter') {
+            cmp = a.pageIndex - b.pageIndex || a.sectionIndex - b.sectionIndex;
+            if (sortDir === 'desc') cmp = -cmp;
+        } else if (b.score !== a.score) {
+            cmp = b.score - a.score;
+            if (sortDir === 'asc') cmp = -cmp;
+        } else {
+            cmp = String(a.page.title).localeCompare(String(b.page.title), 'zh');
+            if (sortDir === 'asc') cmp = -cmp;
+        }
+        return cmp;
+    }
+
+    function sortLabel() {
+        return (sortBy === 'chapter' ? '按章节' : '按相关性') + (sortDir === 'asc' ? '升序' : '降序');
+    }
+
+    function sortHint() {
+        if (sortBy === 'chapter') return sortDir === 'asc' ? '靠前的章节在前' : '靠后的章节在前';
+        return sortDir === 'desc' ? '相关度高的在前' : '相关度低的在前';
+    }
+
+    function syncSortControl() {
+        if (sortHintEl) sortHintEl.textContent = sortHint();
+        if (sortBtn) {
+            const label = '排序：' + sortLabel();
+            sortBtn.title = label;
+            sortBtn.setAttribute('aria-label', label);
+            sortBtn.classList.toggle('is-custom', !(sortBy === 'relevance' && sortDir === 'desc'));
+        }
+        if (!sortPanel) return;
+        sortPanel.querySelectorAll('input[name="search-sort-by"]').forEach(function(input) {
+            input.checked = input.value === sortBy;
+        });
+        sortPanel.querySelectorAll('input[name="search-sort-dir"]').forEach(function(input) {
+            input.checked = input.value === sortDir;
+        });
+    }
+
+    function persistSort() {
+        try {
+            sessionStorage.setItem('gitbook.searchSort', JSON.stringify({ by: sortBy, dir: sortDir }));
+            sessionStorage.removeItem('gitbook.searchChapterSort');
+        } catch (e) {}
+    }
+
+    function closeSortPanel() {
+        if (!sortPanel || sortPanel.hidden) return;
+        sortPanel.hidden = true;
+        if (sortBtn) sortBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function openSortPanel() {
+        if (!sortPanel || !sortBtn) return;
+        sortPanel.hidden = false;
+        sortBtn.setAttribute('aria-expanded', 'true');
     }
 
     function snippetSource(hit, terms) {
@@ -338,7 +424,9 @@
         hits = search(input.value);
         const status = document.createElement('p');
         status.className = 'search-status';
-        status.textContent = hits.length ? (hits.length + ' 个结果') : '没有找到相关内容';
+        status.textContent = hits.length
+            ? (hits.length + ' 个结果，' + sortLabel())
+            : '没有找到相关内容';
         resultsEl.appendChild(status);
 
         hits.forEach(function(hit, i) {
@@ -377,11 +465,51 @@
         });
     }
 
+    syncSortControl();
+    if (sortBtn && sortPanel) {
+        sortBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (sortPanel.hidden) openSortPanel();
+            else closeSortPanel();
+        });
+        sortPanel.addEventListener('change', function(e) {
+            const target = e.target;
+            if (!target || !target.name) return;
+            if (target.name === 'search-sort-by' && (target.value === 'relevance' || target.value === 'chapter')) {
+                sortBy = target.value;
+            } else if (target.name === 'search-sort-dir' && (target.value === 'asc' || target.value === 'desc')) {
+                sortDir = target.value;
+            } else {
+                return;
+            }
+            persistSort();
+            syncSortControl();
+            if (input.value.trim()) render();
+        });
+        sortPanel.addEventListener('keydown', function(e) {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            e.stopPropagation();
+            closeSortPanel();
+            sortBtn.focus();
+        });
+        document.addEventListener('click', function(e) {
+            if (sortPanel.hidden || !sortRoot || sortRoot.contains(e.target)) return;
+            closeSortPanel();
+        });
+    }
+
     input.addEventListener('input', render);
     input.addEventListener('focus', syncHint);
     input.addEventListener('blur', syncHint);
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            if (sortPanel && !sortPanel.hidden) {
+                closeSortPanel();
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
             if (input.value) {
                 input.value = '';
                 render();

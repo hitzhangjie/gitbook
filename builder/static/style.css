@@ -553,13 +553,23 @@ body {
 /* Full-text search */
 .book-search {
     position: relative;
+    z-index: 5;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 10px 12px;
     border-bottom: 1px solid #e1e4e8;
     background-color: #f7f7f7;
 }
 
-.book-search input {
+.book-search-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.book-search-field input {
     width: 100%;
     height: 32px;
     padding: 0 28px 0 10px;
@@ -571,19 +581,19 @@ body {
     font-size: 13px;
 }
 
-.book-search input:focus {
+.book-search-field input:focus {
     outline: none;
     border-color: #0366d6;
     box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.15);
 }
 
-.book-search input::-webkit-search-cancel-button {
+.book-search-field input::-webkit-search-cancel-button {
     -webkit-appearance: none;
 }
 
 .search-kbd {
     position: absolute;
-    right: 20px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
     padding: 0 5px;
@@ -596,6 +606,102 @@ body {
     font-size: 11px;
     line-height: 16px;
     pointer-events: none;
+}
+
+.search-sort {
+    flex-shrink: 0;
+}
+
+.search-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #d1d5da;
+    border-radius: 6px;
+    background: #fff;
+    color: #24292e;
+    cursor: pointer;
+}
+
+.search-sort-btn:hover,
+.search-sort-btn:focus-visible,
+.search-sort-btn[aria-expanded="true"] {
+    border-color: #0366d6;
+    color: #0366d6;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.15);
+}
+
+.search-sort-btn.is-custom {
+    border-color: #0366d6;
+    color: #0366d6;
+}
+
+.search-sort-panel {
+    position: absolute;
+    z-index: 6;
+    top: calc(100% + 4px);
+    left: 12px;
+    right: 12px;
+    padding: 10px 12px 12px;
+    border: 1px solid #d1d5da;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(27, 31, 35, 0.12);
+}
+
+.search-sort-panel[hidden] {
+    display: none;
+}
+
+.search-sort-title {
+    margin: 0 0 8px;
+    color: #24292e;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.search-sort-group {
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+}
+
+.search-sort-group legend {
+    margin-bottom: 4px;
+    padding: 0;
+    color: #6a737d;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.search-sort-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0;
+    color: #24292e;
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.search-sort-option input {
+    width: auto;
+    height: auto;
+    margin: 0;
+    flex: none;
+}
+
+.search-sort-hint {
+    margin: 2px 0 0;
+    color: #6a737d;
+    font-size: 12px;
+    line-height: 1.4;
 }
 
 .search-results {

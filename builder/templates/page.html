@@ -39,8 +39,34 @@
                     </button>
                 </div>
                 <div class="book-search">
-                    <input type="search" id="search-input" placeholder="搜索全书" autocomplete="off" spellcheck="false" aria-label="搜索全书" aria-controls="search-results" aria-autocomplete="list">
-                    <kbd class="search-kbd" id="search-kbd">/</kbd>
+                    <div class="book-search-field">
+                        <input type="search" id="search-input" placeholder="搜索全书" autocomplete="off" spellcheck="false" aria-label="搜索全书" aria-controls="search-results" aria-autocomplete="list">
+                        <kbd class="search-kbd" id="search-kbd">/</kbd>
+                    </div>
+                    <div class="search-sort" id="search-sort">
+                        <button type="button" class="search-sort-btn" id="search-sort-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="search-sort-panel" aria-label="排序" title="排序">
+                            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M8 6v12"></path>
+                                <path d="M5 9l3-3 3 3"></path>
+                                <path d="M16 18V6"></path>
+                                <path d="M13 15l3 3 3-3"></path>
+                            </svg>
+                        </button>
+                        <div class="search-sort-panel" id="search-sort-panel" role="dialog" aria-label="排序设置" hidden>
+                            <p class="search-sort-title">排序</p>
+                            <fieldset class="search-sort-group">
+                                <legend>排序方式</legend>
+                                <label class="search-sort-option"><input type="radio" name="search-sort-by" value="relevance" checked> 相关性</label>
+                                <label class="search-sort-option"><input type="radio" name="search-sort-by" value="chapter"> 章节</label>
+                            </fieldset>
+                            <fieldset class="search-sort-group">
+                                <legend>顺序</legend>
+                                <label class="search-sort-option"><input type="radio" name="search-sort-dir" value="asc"> 升序</label>
+                                <label class="search-sort-option"><input type="radio" name="search-sort-dir" value="desc" checked> 降序</label>
+                            </fieldset>
+                            <p class="search-sort-hint" id="search-sort-hint">相关度高的在前</p>
+                        </div>
+                    </div>
                 </div>
                 <div class="search-results sidebar-scroll" id="search-results" hidden></div>
                 <nav class="nav-tree sidebar-scroll" id="nav-tree">
