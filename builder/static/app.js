@@ -2,10 +2,10 @@ function notifyGitbookPage() {
     window.dispatchEvent(new CustomEvent('gitbook:page'));
 }
 
-// Reader settings: sidebar widths persisted in localStorage
+// Reader settings: sidebar widths and scroll memory persisted in localStorage
 (function() {
     const STORAGE_KEY = 'gitbook.settings';
-    const DEFAULTS = { navWidth: 250, tocWidth: 250 };
+    const DEFAULTS = { navWidth: 250, tocWidth: 250, rememberScroll: true };
     const MIN = 150;
     const MAX = 500;
 
@@ -18,14 +18,16 @@ function notifyGitbookPage() {
     function load() {
         try {
             const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+            if (!raw) return { ...DEFAULTS };
             const data = JSON.parse(raw);
             return {
                 navWidth: clamp(data.navWidth) || DEFAULTS.navWidth,
-                tocWidth: clamp(data.tocWidth) || DEFAULTS.tocWidth
+                tocWidth: clamp(data.tocWidth) || DEFAULTS.tocWidth,
+                // Missing on settings saved by older versions: default to on
+                rememberScroll: data.rememberScroll !== false
             };
         } catch (e) {
-            return { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+            return { ...DEFAULTS };
         }
     }
 
@@ -35,7 +37,8 @@ function notifyGitbookPage() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
                 navWidth: current.navWidth,
-                tocWidth: current.tocWidth
+                tocWidth: current.tocWidth,
+                rememberScroll: current.rememberScroll
             }));
         } catch (e) {}
     }
@@ -45,10 +48,12 @@ function notifyGitbookPage() {
         const toc = document.getElementById('setting-toc-width');
         const navValue = document.getElementById('setting-nav-width-value');
         const tocValue = document.getElementById('setting-toc-width-value');
+        const remember = document.getElementById('setting-remember-scroll');
         if (nav) nav.value = String(current.navWidth);
         if (toc) toc.value = String(current.tocWidth);
         if (navValue) navValue.textContent = current.navWidth + 'px';
         if (tocValue) tocValue.textContent = current.tocWidth + 'px';
+        if (remember) remember.checked = current.rememberScroll;
     }
 
     function applyWidths() {
@@ -71,11 +76,23 @@ function notifyGitbookPage() {
         return value;
     }
 
+    function setRememberScroll(enabled, shouldPersist) {
+        current.rememberScroll = !!enabled;
+        // Turning the setting off discards what was remembered while it was on
+        if (!current.rememberScroll && typeof window.gitbookClearScrollMemory === 'function') {
+            window.gitbookClearScrollMemory();
+        }
+        if (shouldPersist) persist();
+    }
+
     function reset() {
-        current = { navWidth: DEFAULTS.navWidth, tocWidth: DEFAULTS.tocWidth };
+        current = { ...DEFAULTS };
         try {
             localStorage.removeItem(STORAGE_KEY);
         } catch (e) {}
+        if (typeof window.gitbookClearScrollMemory === 'function') {
+            window.gitbookClearScrollMemory();
+        }
         applyWidths();
     }
 
@@ -86,6 +103,7 @@ function notifyGitbookPage() {
         const resetBtn = document.getElementById('settings-reset');
         const nav = document.getElementById('setting-nav-width');
         const toc = document.getElementById('setting-toc-width');
+        const remember = document.getElementById('setting-remember-scroll');
         const panel = document.getElementById('settings-panel');
         if (!openBtn || !overlay || !panel) return;
 
@@ -125,6 +143,11 @@ function notifyGitbookPage() {
                 setWidth('right', this.value, true);
             });
         }
+        if (remember) {
+            remember.addEventListener('change', function() {
+                setRememberScroll(this.checked, true);
+            });
+        }
     }
 
     applyWidths();
@@ -132,9 +155,17 @@ function notifyGitbookPage() {
 
     window.gitbookSettings = {
         setWidth: setWidth,
+        setRememberScroll: setRememberScroll,
         persist: persist,
+        isScrollMemoryEnabled: function() {
+            return current.rememberScroll;
+        },
         get: function() {
-            return { navWidth: current.navWidth, tocWidth: current.tocWidth };
+            return {
+                navWidth: current.navWidth,
+                tocWidth: current.tocWidth,
+                rememberScroll: current.rememberScroll
+            };
         }
     };
 })();
@@ -257,6 +288,86 @@ function notifyGitbookPage() {
 
 // Navigation tree link handling (partial page load)
 (function() {
+    // Remember the scroll position of each chapter, so switching chapters and
+    // coming back resumes where the reader left off. Unvisited chapters open
+    // at the top. Kept in sessionStorage: one tab's reading session, cleared
+    // when the tab is closed.
+    const SCROLL_STORAGE_KEY = 'gitbook.scrollPositions';
+    const scrollPositions = (function() {
+        try {
+            return JSON.parse(sessionStorage.getItem(SCROLL_STORAGE_KEY)) || {};
+        } catch (e) {
+            return {};
+        }
+    })();
+    let scrollKey = normalizePath(window.location.pathname);
+    let scrollSaveQueued = false;
+
+    function normalizePath(path) {
+        if (!path) return '/';
+        return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
+    }
+
+    function scrollMemoryEnabled() {
+        return !window.gitbookSettings ||
+            typeof window.gitbookSettings.isScrollMemoryEnabled !== 'function' ||
+            window.gitbookSettings.isScrollMemoryEnabled();
+    }
+
+    function persistScrollPositions() {
+        try {
+            sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(scrollPositions));
+        } catch (e) {}
+    }
+
+    function saveScrollPosition() {
+        if (!scrollMemoryEnabled()) return;
+        const contentArea = document.getElementById('main-content');
+        if (!contentArea) return;
+        scrollPositions[scrollKey] = contentArea.scrollTop;
+        persistScrollPositions();
+    }
+
+    function queueSaveScrollPosition() {
+        if (scrollSaveQueued || !scrollMemoryEnabled()) return;
+        scrollSaveQueued = true;
+        requestAnimationFrame(function() {
+            scrollSaveQueued = false;
+            saveScrollPosition();
+        });
+    }
+
+    // Scroll a freshly loaded chapter to its remembered position, or to the
+    // top if the reader has not been there before or has scroll memory off.
+    function restoreScrollPosition(path) {
+        const contentArea = document.getElementById('main-content');
+        if (!contentArea) return;
+        if (!scrollMemoryEnabled()) {
+            contentArea.scrollTop = 0;
+            return;
+        }
+        const saved = scrollPositions[normalizePath(path)];
+        const maxScroll = Math.max(0, contentArea.scrollHeight - contentArea.clientHeight);
+        contentArea.scrollTop = saved ? Math.min(saved, maxScroll) : 0;
+    }
+
+    // Called when the reader turns scroll memory off or resets settings
+    window.gitbookClearScrollMemory = function() {
+        Object.keys(scrollPositions).forEach(function(key) {
+            delete scrollPositions[key];
+        });
+        persistScrollPositions();
+    };
+
+    // Listen in the capture phase on document: the TOC scroll spy replaces
+    // #main-content with a clone, which would drop a listener bound to it.
+    document.addEventListener('scroll', function(e) {
+        if (e.target && e.target.id === 'main-content') {
+            queueSaveScrollPosition();
+        }
+    }, { capture: true, passive: true });
+    window.addEventListener('pagehide', saveScrollPosition);
+
     // Expose initNavTreeLinks globally so it can be called after live reload
     window.initNavTreeLinks = function() {
         const navLinks = document.querySelectorAll('.nav-link');
@@ -354,8 +465,8 @@ function notifyGitbookPage() {
                 return;
             }
             
-            // Save scroll position
-            const scrollTop = contentArea.scrollTop;
+            // Remember where the reader stopped on the current chapter
+            saveScrollPosition();
             
             // Show loading indicator
             const indicator = document.getElementById('live-reload-indicator');
@@ -437,8 +548,13 @@ function notifyGitbookPage() {
                     if (!opts.pop) {
                         window.history.pushState({ path: nextURL }, '', nextURL);
                     }
+
+                    // From here on, scroll events belong to the new chapter
+                    scrollKey = normalizePath(targetPath);
                     if (targetHash) {
                         scrollContentToHash(targetHash, 'auto');
+                    } else {
+                        restoreScrollPosition(targetPath);
                     }
 
                     if (newDoc.title) {
@@ -503,6 +619,16 @@ function notifyGitbookPage() {
         requestAnimationFrame(function() {
             scrollContentToHash(window.location.hash);
         });
+    } else {
+        // On a full reload (or back/forward without SPA state), resume where
+        // the reader stopped. A fresh navigation starts at the top.
+        const navEntry = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+        const resume = navEntry && (navEntry.type === 'reload' || navEntry.type === 'back_forward');
+        if (resume) {
+            requestAnimationFrame(function() {
+                restoreScrollPosition(window.location.pathname);
+            });
+        }
     }
 })();
 
