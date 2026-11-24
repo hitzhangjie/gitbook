@@ -544,6 +544,10 @@
         const find = (e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K');
         if (!slash && !find) return;
         e.preventDefault();
+        // The search box lives in the left sidebar: reveal it if collapsed
+        if (window.gitbookSettings && typeof window.gitbookSettings.setCollapsed === 'function') {
+            window.gitbookSettings.setCollapsed('left', false, true);
+        }
         input.focus();
         input.select();
     });

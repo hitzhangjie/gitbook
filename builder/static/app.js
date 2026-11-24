@@ -2,10 +2,17 @@ function notifyGitbookPage() {
     window.dispatchEvent(new CustomEvent('gitbook:page'));
 }
 
-// Reader settings: sidebar widths and scroll memory persisted in localStorage
+// Reader settings: sidebar widths, sidebar visibility and scroll memory,
+// persisted in localStorage
 (function() {
     const STORAGE_KEY = 'gitbook.settings';
-    const DEFAULTS = { navWidth: 250, tocWidth: 250, rememberScroll: true };
+    const DEFAULTS = {
+        navWidth: 250,
+        tocWidth: 250,
+        rememberScroll: true,
+        navCollapsed: false,
+        tocCollapsed: false
+    };
     const MIN = 150;
     const MAX = 500;
 
@@ -24,7 +31,10 @@ function notifyGitbookPage() {
                 navWidth: clamp(data.navWidth) || DEFAULTS.navWidth,
                 tocWidth: clamp(data.tocWidth) || DEFAULTS.tocWidth,
                 // Missing on settings saved by older versions: default to on
-                rememberScroll: data.rememberScroll !== false
+                rememberScroll: data.rememberScroll !== false,
+                // Missing on settings saved by older versions: default to shown
+                navCollapsed: data.navCollapsed === true,
+                tocCollapsed: data.tocCollapsed === true
             };
         } catch (e) {
             return { ...DEFAULTS };
@@ -38,7 +48,9 @@ function notifyGitbookPage() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify({
                 navWidth: current.navWidth,
                 tocWidth: current.tocWidth,
-                rememberScroll: current.rememberScroll
+                rememberScroll: current.rememberScroll,
+                navCollapsed: current.navCollapsed,
+                tocCollapsed: current.tocCollapsed
             }));
         } catch (e) {}
     }
@@ -49,16 +61,27 @@ function notifyGitbookPage() {
         const navValue = document.getElementById('setting-nav-width-value');
         const tocValue = document.getElementById('setting-toc-width-value');
         const remember = document.getElementById('setting-remember-scroll');
+        const showNav = document.getElementById('setting-show-nav');
+        const showToc = document.getElementById('setting-show-toc');
+        const toggleLeft = document.getElementById('toggle-left');
+        const toggleRight = document.getElementById('toggle-right');
         if (nav) nav.value = String(current.navWidth);
         if (toc) toc.value = String(current.tocWidth);
         if (navValue) navValue.textContent = current.navWidth + 'px';
         if (tocValue) tocValue.textContent = current.tocWidth + 'px';
         if (remember) remember.checked = current.rememberScroll;
+        if (showNav) showNav.checked = !current.navCollapsed;
+        if (showToc) showToc.checked = !current.tocCollapsed;
+        if (toggleLeft) toggleLeft.setAttribute('aria-expanded', String(!current.navCollapsed));
+        if (toggleRight) toggleRight.setAttribute('aria-expanded', String(!current.tocCollapsed));
     }
 
-    function applyWidths() {
-        document.documentElement.style.setProperty('--sidebar-left-width', current.navWidth + 'px');
-        document.documentElement.style.setProperty('--sidebar-right-width', current.tocWidth + 'px');
+    function applyLayout() {
+        const root = document.documentElement;
+        root.style.setProperty('--sidebar-left-width', current.navWidth + 'px');
+        root.style.setProperty('--sidebar-right-width', current.tocWidth + 'px');
+        root.classList.toggle('nav-collapsed', current.navCollapsed);
+        root.classList.toggle('toc-collapsed', current.tocCollapsed);
         syncControls();
         window.dispatchEvent(new Event('resize'));
     }
@@ -71,9 +94,32 @@ function notifyGitbookPage() {
         } else {
             current.tocWidth = value;
         }
-        applyWidths();
+        applyLayout();
         if (shouldPersist) persist();
         return value;
+    }
+
+    function isCollapsed(side) {
+        return side === 'left' ? current.navCollapsed : current.tocCollapsed;
+    }
+
+    function setCollapsed(side, collapsed, shouldPersist) {
+        if (side === 'left') {
+            current.navCollapsed = !!collapsed;
+        } else {
+            current.tocCollapsed = !!collapsed;
+        }
+        applyLayout();
+        if (shouldPersist) persist();
+    }
+
+    // Collapse/expand from a toggle button; move focus to the control that
+    // replaced the one just used, since the original becomes hidden.
+    function toggleSidebar(side, collapsed) {
+        if (typeof collapsed !== 'boolean') collapsed = !isCollapsed(side);
+        setCollapsed(side, collapsed, true);
+        const target = document.getElementById((collapsed ? 'restore-' : 'toggle-') + side);
+        if (target) target.focus();
     }
 
     function setRememberScroll(enabled, shouldPersist) {
@@ -93,7 +139,7 @@ function notifyGitbookPage() {
         if (typeof window.gitbookClearScrollMemory === 'function') {
             window.gitbookClearScrollMemory();
         }
-        applyWidths();
+        applyLayout();
     }
 
     function initPanel() {
@@ -115,7 +161,9 @@ function notifyGitbookPage() {
 
         function close() {
             overlay.hidden = true;
-            openBtn.focus();
+            // The settings button is hidden while the left sidebar is collapsed
+            const target = current.navCollapsed ? document.getElementById('restore-left') : openBtn;
+            if (target) target.focus();
         }
 
         openBtn.addEventListener('click', open);
@@ -150,21 +198,69 @@ function notifyGitbookPage() {
         }
     }
 
-    applyWidths();
+    function initSidebarToggles() {
+        const showNav = document.getElementById('setting-show-nav');
+        const showToc = document.getElementById('setting-show-toc');
+
+        const toggleLeft = document.getElementById('toggle-left');
+        const toggleRight = document.getElementById('toggle-right');
+        const restoreLeft = document.getElementById('restore-left');
+        const restoreRight = document.getElementById('restore-right');
+
+        if (toggleLeft) {
+            toggleLeft.addEventListener('click', function() {
+                toggleSidebar('left', true);
+            });
+        }
+        if (toggleRight) {
+            toggleRight.addEventListener('click', function() {
+                toggleSidebar('right', true);
+            });
+        }
+        if (restoreLeft) {
+            restoreLeft.addEventListener('click', function() {
+                toggleSidebar('left', false);
+            });
+        }
+        if (restoreRight) {
+            restoreRight.addEventListener('click', function() {
+                toggleSidebar('right', false);
+            });
+        }
+        // In the settings panel the checkbox itself keeps focus, so collapse
+        // without moving focus to the sidebar controls.
+        if (showNav) {
+            showNav.addEventListener('change', function() {
+                setCollapsed('left', !this.checked, true);
+            });
+        }
+        if (showToc) {
+            showToc.addEventListener('change', function() {
+                setCollapsed('right', !this.checked, true);
+            });
+        }
+    }
+
+    applyLayout();
     initPanel();
+    initSidebarToggles();
 
     window.gitbookSettings = {
         setWidth: setWidth,
+        setCollapsed: setCollapsed,
         setRememberScroll: setRememberScroll,
         persist: persist,
         isScrollMemoryEnabled: function() {
             return current.rememberScroll;
         },
+        isSidebarCollapsed: isCollapsed,
         get: function() {
             return {
                 navWidth: current.navWidth,
                 tocWidth: current.tocWidth,
-                rememberScroll: current.rememberScroll
+                rememberScroll: current.rememberScroll,
+                navCollapsed: current.navCollapsed,
+                tocCollapsed: current.tocCollapsed
             };
         }
     };

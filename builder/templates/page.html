@@ -19,6 +19,9 @@
                 var toc = clamp(data.tocWidth);
                 if (nav) document.documentElement.style.setProperty('--sidebar-left-width', nav + 'px');
                 if (toc) document.documentElement.style.setProperty('--sidebar-right-width', toc + 'px');
+                // Apply collapsed sidebars before first paint to avoid a flash
+                if (data.navCollapsed === true) document.documentElement.classList.add('nav-collapsed');
+                if (data.tocCollapsed === true) document.documentElement.classList.add('toc-collapsed');
             } catch (e) {}
         })();
     </script>
@@ -31,12 +34,19 @@
             <div class="sidebar-content">
                 <div class="sidebar-header">
                     <h2>{{.BookTitle}}</h2>
-                    <button type="button" class="settings-btn" id="settings-btn" title="设置" aria-label="打开设置" aria-haspopup="dialog" aria-controls="settings-panel">
-                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="3"></circle>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                        </svg>
-                    </button>
+                    <div class="sidebar-actions">
+                        <button type="button" class="sidebar-toggle" id="toggle-left" title="收起章节目录" aria-label="收起章节目录" aria-controls="sidebar-left" aria-expanded="true">
+                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <button type="button" class="settings-btn" id="settings-btn" title="设置" aria-label="打开设置" aria-haspopup="dialog" aria-controls="settings-panel">
+                            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="book-search">
                     <div class="book-search-field">
@@ -89,7 +99,12 @@
         <aside class="sidebar sidebar-right" id="sidebar-right">
             <div class="sidebar-content">
                 <div class="sidebar-header">
-                    <h3>&nbsp;&nbsp;&nbsp;目录</h3>
+                    <h3>目录</h3>
+                    <button type="button" class="sidebar-toggle" id="toggle-right" title="收起本章目录" aria-label="收起本章目录" aria-controls="sidebar-right" aria-expanded="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
                 </div>
                 <nav class="toc sidebar-scroll" id="toc">
                     {{if .TOC}}
@@ -103,6 +118,18 @@
         </aside>
     </div>
 
+    <!-- Floating buttons to restore collapsed sidebars -->
+    <button type="button" class="sidebar-restore sidebar-restore-left" id="restore-left" title="展开章节目录" aria-label="展开章节目录" aria-controls="sidebar-left">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+    </button>
+    <button type="button" class="sidebar-restore sidebar-restore-right" id="restore-right" title="展开本章目录" aria-label="展开本章目录" aria-controls="sidebar-right">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+    </button>
+
     <div class="settings-overlay" id="settings-overlay" hidden>
         <div class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div class="settings-panel-header">
@@ -110,6 +137,16 @@
                 <button type="button" class="settings-close" id="settings-close" aria-label="关闭设置">&times;</button>
             </div>
             <div class="settings-body">
+                <div class="settings-field">
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="setting-show-nav" checked>
+                        <span>显示左侧章节目录</span>
+                    </label>
+                    <label class="settings-toggle">
+                        <input type="checkbox" id="setting-show-toc" checked>
+                        <span>显示右侧本章目录</span>
+                    </label>
+                </div>
                 <div class="settings-field">
                     <div class="settings-label-row">
                         <label for="setting-nav-width">左侧章节目录宽度</label>
